@@ -56,8 +56,13 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 
 .note{font-size:.74rem;color:var(--muted);line-height:1.5;background:var(--panel);border:1px dashed var(--line);border-radius:10px;padding:10px 12px;margin:10px 0}
 
-section.patch{background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-bottom:16px;overflow:hidden;position:relative}
-section.patch > h2{font-size:.92rem;padding:10px 14px;border-bottom:1px solid var(--line);background:color-mix(in srgb, var(--panel) 92%, var(--ink) 8%)}
+details.patch{background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-bottom:12px;overflow:hidden;position:relative;scroll-margin-top:calc(env(safe-area-inset-top,0px) + 96px)}
+details.patch > summary{list-style:none;cursor:pointer;padding:10px 14px;border-bottom:1px solid var(--line);background:color-mix(in srgb, var(--panel) 92%, var(--ink) 8%);display:flex;align-items:center;justify-content:space-between;gap:8px}
+details.patch > summary::-webkit-details-marker{display:none}
+details.patch > summary h2{font-size:.92rem}
+details.patch > summary::after{content:'▸';color:var(--muted);font-size:.8rem;flex:none;transition:transform .15s}
+details.patch[open] > summary::after{transform:rotate(90deg)}
+@media(prefers-reduced-motion:reduce){details.patch > summary::after{transition:none}}
 .rowScroll{overflow-x:auto;padding:12px 14px}
 .secGrid{display:grid;grid-template-columns:30px repeat(48, 34px);grid-template-rows:auto 50px auto 50px;column-gap:3px;row-gap:4px;width:max-content}
 .rowTag{position:sticky;left:0;background:var(--panel);z-index:2;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:.6rem;letter-spacing:.06em;color:var(--muted)}
@@ -79,8 +84,19 @@ section.patch > h2{font-size:.92rem;padding:10px 14px;border-bottom:1px solid va
 @media(prefers-reduced-motion:reduce){#cableSvg .vis{transition:none}}
 
 .panels{display:grid;grid-template-columns:1fr;gap:16px}
-.sidebar{position:sticky;top:calc(env(safe-area-inset-top,0px) + 70px);display:flex;flex-direction:column;gap:12px}
-@media(min-width:980px){.panels{grid-template-columns:1fr 340px}}
+#sections{order:2}
+.sidebar{position:static;order:1;display:flex;flex-direction:column;gap:12px}
+@media(min-width:980px){
+  .panels{grid-template-columns:1fr 340px}
+  #sections{order:0}
+  .sidebar{order:0;position:sticky;top:calc(env(safe-area-inset-top,0px) + 70px)}
+}
+@media(max-width:640px){
+  .secGrid{grid-template-columns:34px repeat(48, 40px);grid-template-rows:auto 56px auto 56px}
+  .jack{width:40px;height:56px}
+  .jack .hole{width:28px;height:28px}
+  .jack .cap{max-width:40px;font-size:.58rem}
+}
 
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
 .card h3{font-size:.85rem;margin-bottom:8px}
@@ -127,6 +143,7 @@ section.patch > h2{font-size:.92rem;padding:10px 14px;border-bottom:1px solid va
         <button class="tab active" data-mode="sandbox">Sandbox</button>
         <button class="tab" data-mode="exercise">Ejercicios</button>
       </div>
+      <button class="ghost-btn" id="expandAllBtn">Expandir todo</button>
       <button class="ghost-btn" id="clearBtn">Limpiar cables</button>
     </div>
   </div>
@@ -315,12 +332,24 @@ function key(s,r,p){return s+'|'+r+'|'+p;}
 function buildAndRenderSections(){
   const host = document.getElementById('sections');
   SECTIONS.forEach(sec=>{
-    const el = document.createElement('section');
+    const el = document.createElement('details');
     el.className='patch';
-    el.innerHTML = `<h2>${sec.title}</h2>`;
+    el.id = 'sec-'+sec.id;
+    el.open = true;
+    el.addEventListener('toggle', scheduleRedraw);
+    const sum = document.createElement('summary');
+    sum.innerHTML = `<h2>${sec.title}</h2>`;
+    el.appendChild(sum);
     el.appendChild(renderSectionGrid(sec));
     host.appendChild(el);
   });
+}
+
+function setSectionsOpen(idsOrAll){
+  document.querySelectorAll('details.patch').forEach(d=>{
+    d.open = (idsOrAll==='all') ? true : idsOrAll.has(d.id.replace('sec-',''));
+  });
+  scheduleRedraw();
 }
 
 function renderSectionGrid(sec){
@@ -479,6 +508,7 @@ function redrawCables(){
     const elA = jackEl(c.sup), elB = jackEl(c.inf);
     if(!elA || !elB) return;
     const ra = holeRect(elA), rb = holeRect(elB);
+    if(ra.width===0 || rb.width===0) return; // endpoint inside a collapsed section
     const x1 = ra.left + ra.width/2;
     const y1 = ra.bottom + window.scrollY - 1; // sup jacks exit from the bottom of the hole
     const x2 = rb.left + rb.width/2;
@@ -552,17 +582,22 @@ document.querySelectorAll('.tab').forEach(tab=>{
       if(currentExercise){
         document.getElementById('exerciseWorkCard').hidden=false;
         document.getElementById('exerciseListCard').hidden=true;
+        setSectionsOpen(exerciseSectionIds(currentExercise));
       } else {
         document.getElementById('exerciseListCard').hidden=false;
         document.getElementById('exerciseWorkCard').hidden=true;
+        setSectionsOpen('all');
       }
     } else {
       document.getElementById('exerciseListCard').hidden=true;
       document.getElementById('exerciseWorkCard').hidden=true;
+      setSectionsOpen('all');
     }
     renderAll();
   });
 });
+
+document.getElementById('expandAllBtn').addEventListener('click', ()=> setSectionsOpen('all'));
 
 document.getElementById('clearBtn').addEventListener('click', ()=>{
   if(mode==='sandbox'){ sandboxCables.length=0; saveSandbox(); }
@@ -616,6 +651,12 @@ function renderExList(){
   });
 }
 
+function exerciseSectionIds(ex){
+  const ids = new Set();
+  ex.req.forEach(r=>{ ids.add(r.a.section); ids.add(r.b.section); });
+  return ids;
+}
+
 function openExercise(id){
   currentExercise = EXERCISES.find(e=>e.id===id);
   exerciseCables = [];
@@ -624,8 +665,12 @@ function openExercise(id){
   document.getElementById('exerciseWorkCard').hidden=false;
   document.getElementById('exTitle').textContent = currentExercise.title;
   document.getElementById('exDesc').textContent = currentExercise.desc;
+  const ids = exerciseSectionIds(currentExercise);
+  setSectionsOpen(ids);
   renderAll();
   renderChecklist(false);
+  const firstSec = document.getElementById('sec-'+[...ids][0]);
+  if(firstSec) requestAnimationFrame(()=> firstSec.scrollIntoView({behavior:'smooth', block:'start'}));
 }
 
 function pairEquals(req, c){
@@ -665,6 +710,7 @@ document.getElementById('backToListBtn').addEventListener('click', ()=>{
   currentExercise=null;
   document.getElementById('exerciseWorkCard').hidden=true;
   document.getElementById('exerciseListCard').hidden=false;
+  setSectionsOpen('all');
 });
 
 // ---- Init ----
