@@ -59,17 +59,17 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 section.patch{background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-bottom:16px;overflow:hidden;position:relative}
 section.patch > h2{font-size:.92rem;padding:10px 14px;border-bottom:1px solid var(--line);background:color-mix(in srgb, var(--panel) 92%, var(--ink) 8%)}
 .rowScroll{overflow-x:auto;padding:12px 14px}
-.secGrid{display:grid;grid-template-columns:30px repeat(48, 34px);grid-template-rows:auto 42px auto 42px;column-gap:3px;row-gap:4px;width:max-content}
+.secGrid{display:grid;grid-template-columns:30px repeat(48, 34px);grid-template-rows:auto 50px auto 50px;column-gap:3px;row-gap:4px;width:max-content}
 .rowTag{position:sticky;left:0;background:var(--panel);z-index:2;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:.6rem;letter-spacing:.06em;color:var(--muted)}
 .groupHead{font-size:.58rem;color:var(--muted);white-space:nowrap;font-weight:600;align-self:end;padding-bottom:2px;overflow:hidden}
 .groupHead.inf{align-self:start;padding-bottom:0;padding-top:2px}
 .groupHead .unconfTag{color:var(--c-unconf);font-style:italic}
-.jack{appearance:none;cursor:pointer;border:1px solid var(--line);background:var(--bg);border-radius:6px;width:34px;height:40px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:2px;position:relative;border-top:3px solid var(--cat,var(--c-neutral))}
-.jack .pos{font-family:var(--font-mono);font-size:.52rem;color:var(--muted)}
-.jack .item{font-family:var(--font-mono);font-size:.62rem;font-weight:700;line-height:1;color:var(--ink);text-align:center}
-.jack.unconfirmed{background:repeating-linear-gradient(45deg, color-mix(in srgb, var(--panel) 80%, var(--c-unconf) 20%), color-mix(in srgb, var(--panel) 80%, var(--c-unconf) 20%) 3px, var(--panel) 3px, var(--panel) 6px);border-top-color:var(--c-unconf)}
-.jack:hover{border-color:var(--accent)}
-.jack.pending{outline:2px solid var(--accent);outline-offset:1px}
+.jack{appearance:none;cursor:pointer;border:none;background:transparent;width:34px;height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0;position:relative}
+.jack .hole{width:24px;height:24px;border-radius:50%;flex:none;background:radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--bg) 70%, #fff 30%) 0%, color-mix(in srgb, var(--ink) 12%, var(--bg)) 55%, color-mix(in srgb, var(--ink) 28%, var(--bg)) 100%);border:2.5px solid var(--cat,var(--c-neutral));box-shadow:inset 0 1px 2px rgba(0,0,0,.4)}
+.jack .cap{font-family:var(--font-mono);font-size:.54rem;color:var(--muted);text-align:center;line-height:1.1;white-space:nowrap;max-width:36px;overflow:hidden;text-overflow:ellipsis}
+.jack.unconfirmed .hole{background:repeating-linear-gradient(45deg, color-mix(in srgb, var(--panel) 75%, var(--c-unconf) 25%), color-mix(in srgb, var(--panel) 75%, var(--c-unconf) 25%) 2px, var(--panel) 2px, var(--panel) 4px);border-style:dashed;border-color:var(--c-unconf)}
+.jack:hover .hole{border-color:var(--accent)}
+.jack.pending .hole{outline:2px solid var(--accent);outline-offset:2px}
 
 #cableSvg{position:absolute;top:0;left:0;pointer-events:none;z-index:6}
 #cableSvg .hit{pointer-events:stroke;cursor:pointer}
@@ -366,7 +366,9 @@ function renderGridRow(grid, sec, rowKey, headerRow, jackRow, headerAfter){
       b.style.gridRow = String(jackRow);
       b.dataset.section=sec.id; b.dataset.row=rowKey; b.dataset.pos=p;
       b.title = `Sección ${sec.title} · ${rowKey.toUpperCase()} ${p} — ${group.label} ${item}` + (jackConfirmed?'':' (sin confirmar)');
-      b.innerHTML = `<span class="pos">${p}</span><span class="item">${item}</span>`;
+      const holeSpan = `<span class="hole"></span>`;
+      const capSpan = `<span class="cap">${item}</span>`;
+      b.innerHTML = headerAfter ? (holeSpan+capSpan) : (capSpan+holeSpan);
       b.addEventListener('click', onJackClick);
       b.addEventListener('mouseenter', ()=>{ hoverJackKey = key(sec.id,rowKey,p); redrawCables(); });
       b.addEventListener('mouseleave', ()=>{ if(hoverJackKey===key(sec.id,rowKey,p)){ hoverJackKey=null; redrawCables(); } });
@@ -413,6 +415,11 @@ function sameJack(a,b){ return a.section===b.section && a.row===b.row && a.pos==
 
 function jackEl(j){
   return document.querySelector(`.jack[data-section="${j.section}"][data-row="${j.row}"][data-pos="${j.pos}"]`);
+}
+
+function holeRect(btn){
+  const h = btn.querySelector('.hole');
+  return h ? h.getBoundingClientRect() : btn.getBoundingClientRect();
 }
 
 function describeJack(j){
@@ -471,11 +478,11 @@ function redrawCables(){
   arr.forEach(c=>{
     const elA = jackEl(c.sup), elB = jackEl(c.inf);
     if(!elA || !elB) return;
-    const ra = elA.getBoundingClientRect(), rb = elB.getBoundingClientRect();
+    const ra = holeRect(elA), rb = holeRect(elB);
     const x1 = ra.left + ra.width/2;
-    const y1 = ra.bottom + window.scrollY - 2; // sup jacks exit from the bottom edge
+    const y1 = ra.bottom + window.scrollY - 1; // sup jacks exit from the bottom of the hole
     const x2 = rb.left + rb.width/2;
-    const y2 = rb.top + window.scrollY + 2; // inf jacks are fed from the top edge
+    const y2 = rb.top + window.scrollY + 1; // inf jacks are fed from the top of the hole
     const ctrl = Math.max(30, Math.min(260, Math.abs(y2-y1)/2 + 20));
     const d = `M ${x1} ${y1} C ${x1} ${y1+ctrl}, ${x2} ${y2-ctrl}, ${x2} ${y2}`;
 
