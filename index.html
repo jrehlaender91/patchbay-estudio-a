@@ -63,7 +63,7 @@ details.patch > summary h2{font-size:.92rem}
 details.patch > summary::after{content:'▸';color:var(--muted);font-size:.8rem;flex:none;transition:transform .15s}
 details.patch[open] > summary::after{transform:rotate(90deg)}
 @media(prefers-reduced-motion:reduce){details.patch > summary::after{transition:none}}
-.rowScroll{overflow-x:auto;padding:12px 14px}
+.rowScroll{overflow-x:auto;padding:12px 14px;position:relative}
 .secGrid{display:grid;grid-template-columns:30px repeat(48, 34px);grid-template-rows:auto 50px auto 50px;column-gap:3px;row-gap:4px;width:max-content}
 .rowTag{position:sticky;left:0;background:var(--panel);z-index:2;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:.6rem;letter-spacing:.06em;color:var(--muted)}
 .groupHead{font-size:.58rem;color:var(--muted);white-space:nowrap;font-weight:600;align-self:end;padding-bottom:2px;overflow:hidden}
@@ -76,15 +76,15 @@ details.patch[open] > summary::after{transform:rotate(90deg)}
 .jack:hover .hole{border-color:var(--accent)}
 .jack.pending .hole{outline:2px solid var(--accent);outline-offset:2px}
 
-#cableSvg{position:absolute;top:0;left:0;pointer-events:none;z-index:6}
-#cableSvg .hit{pointer-events:stroke;cursor:pointer}
-#cableSvg .shadow{stroke:rgba(0,0,0,.35);stroke-width:7;stroke-linecap:round;fill:none;opacity:.5;transition:opacity .12s ease}
-#cableSvg .vis{stroke-width:5.5;stroke-linecap:round;opacity:.95;fill:none;transition:stroke-width .12s ease,opacity .12s ease}
-#cableSvg .core{stroke:rgba(255,255,255,.4);stroke-width:1.4;stroke-linecap:round;fill:none;opacity:.5;transition:opacity .12s ease}
-#cableSvg .cableG.active .vis{stroke-width:7.5;opacity:1}
-#cableSvg .cableG.active .core{opacity:.75}
-#cableSvg .cableG.dim .vis,#cableSvg .cableG.dim .shadow,#cableSvg .cableG.dim .core{opacity:.08}
-@media(prefers-reduced-motion:reduce){#cableSvg .vis,#cableSvg .shadow,#cableSvg .core{transition:none}}
+.cableLayer{position:absolute;top:0;left:0;pointer-events:none;z-index:6}
+.cableLayer .hit{pointer-events:stroke;cursor:pointer}
+.cableLayer .shadow{stroke:rgba(0,0,0,.35);stroke-width:7;stroke-linecap:round;fill:none;opacity:.5;transition:opacity .12s ease}
+.cableLayer .vis{stroke-width:5.5;stroke-linecap:round;opacity:.95;fill:none;transition:stroke-width .12s ease,opacity .12s ease}
+.cableLayer .core{stroke:rgba(255,255,255,.4);stroke-width:1.4;stroke-linecap:round;fill:none;opacity:.5;transition:opacity .12s ease}
+.cableLayer .cableG.active .vis{stroke-width:7.5;opacity:1}
+.cableLayer .cableG.active .core{opacity:.75}
+.cableLayer .cableG.dim .vis,.cableLayer .cableG.dim .shadow,.cableLayer .cableG.dim .core{opacity:.08}
+@media(prefers-reduced-motion:reduce){.cableLayer .vis,.cableLayer .shadow,.cableLayer .core{transition:none}}
 
 .panels{display:grid;grid-template-columns:1fr;gap:16px}
 #sections{order:2}
@@ -185,7 +185,7 @@ details.patch[open] > summary::after{transform:rotate(90deg)}
   </div>
 </div>
 
-<svg id="cableSvg"><defs>
+<svg id="cableSvg" class="cableLayer"><defs>
   <radialGradient id="plugMetal" cx="35%" cy="30%" r="75%">
     <stop offset="0%" stop-color="#eef0f3"/>
     <stop offset="55%" stop-color="#9a9ca3"/>
@@ -377,6 +377,16 @@ function renderSectionGrid(sec){
   renderGridRow(grid, sec, 'inf', 3, 4, true);
 
   wrap.appendChild(grid);
+
+  // A cable overlay that lives INSIDE this section's own scrolling box: the
+  // browser scrolls it natively together with the jacks (no JS needed per
+  // frame), which is what keeps cables perfectly pinned during horizontal
+  // touch-scrolling. Used for cables where both ends are in this section.
+  const localSvg = document.createElementNS(SVG_NS,'svg');
+  localSvg.setAttribute('class','cableLayer localCableSvg');
+  wrap.appendChild(localSvg);
+  sectionLayers[sec.id] = {rowScroll: wrap, grid, svg: localSvg};
+
   return wrap;
 }
 
@@ -408,8 +418,8 @@ function renderGridRow(grid, sec, rowKey, headerRow, jackRow, headerAfter){
       const capSpan = `<span class="cap">${item}</span>`;
       b.innerHTML = headerAfter ? (holeSpan+capSpan) : (capSpan+holeSpan);
       b.addEventListener('click', onJackClick);
-      b.addEventListener('mouseenter', ()=>{ hoverJackKey = key(sec.id,rowKey,p); redrawCables(); });
-      b.addEventListener('mouseleave', ()=>{ if(hoverJackKey===key(sec.id,rowKey,p)){ hoverJackKey=null; redrawCables(); } });
+      b.addEventListener('mouseenter', ()=>{ hoverJackKey = key(sec.id,rowKey,p); scheduleRedraw(); });
+      b.addEventListener('mouseleave', ()=>{ if(hoverJackKey===key(sec.id,rowKey,p)){ hoverJackKey=null; scheduleRedraw(); } });
       grid.appendChild(b);
     });
   });
@@ -427,6 +437,7 @@ function renderLegend(){
 let mode='sandbox';
 let pending=null;
 let hoverJackKey=null;
+const sectionLayers = {}; // sec.id -> {rowScroll, grid, svg}
 let sandboxCables = loadSandbox();
 let exerciseCables = [];
 let currentExercise = null;
@@ -503,83 +514,126 @@ function removeCable(id){
   renderAll();
 }
 
-// ---- Cable SVG overlay ----
-// Elements persist per cable id and just get their attributes updated every
-// animation frame, so cables stay pinned to their jacks even during inertial
-// (momentum) scrolling on phones, where 'scroll' events can arrive late.
-const cableEls = new Map(); // cable id -> {g, hit, vis, capA, capB}
+// ---- Cable rendering ----
+// Cables where both ends sit in the same section are drawn on that section's
+// OWN svg overlay, laid out in content-space coordinates (scrollLeft added
+// back in). Because that overlay is a plain child of the section's scrolling
+// box, the browser scrolls it together with the jacks by itself — no JS runs
+// per frame, so it can never lag behind a touch-scroll gesture. Cables that
+// cross sections can't use that trick (the two ends scroll independently), so
+// they're drawn on a page-level overlay recomputed every animation frame.
+const globalCableEls = new Map(); // cable id -> els
+const localCableEls = new Map();  // cable id -> els
 
-function redrawCables(){
+function buildCableGroupEls(svg, onRemove){
+  const g = document.createElementNS(SVG_NS,'g');
+  const shadow = document.createElementNS(SVG_NS,'path');
+  shadow.setAttribute('class','shadow'); shadow.setAttribute('fill','none'); shadow.setAttribute('transform','translate(0,2)');
+  const vis = document.createElementNS(SVG_NS,'path');
+  vis.setAttribute('class','vis'); vis.setAttribute('fill','none');
+  const core = document.createElementNS(SVG_NS,'path');
+  core.setAttribute('class','core'); core.setAttribute('fill','none');
+  const hit = document.createElementNS(SVG_NS,'path');
+  hit.setAttribute('class','hit'); hit.setAttribute('stroke','transparent'); hit.setAttribute('stroke-width','18'); hit.setAttribute('fill','none');
+  hit.addEventListener('click', onRemove);
+  const capAOuter = document.createElementNS(SVG_NS,'circle');
+  capAOuter.setAttribute('stroke','var(--panel)'); capAOuter.setAttribute('stroke-width','1.5');
+  const capAInner = document.createElementNS(SVG_NS,'circle');
+  capAInner.setAttribute('fill','url(#plugMetal)'); capAInner.setAttribute('stroke','rgba(0,0,0,.4)'); capAInner.setAttribute('stroke-width','.5');
+  const capBOuter = document.createElementNS(SVG_NS,'circle');
+  capBOuter.setAttribute('stroke','var(--panel)'); capBOuter.setAttribute('stroke-width','1.5');
+  const capBInner = document.createElementNS(SVG_NS,'circle');
+  capBInner.setAttribute('fill','url(#plugMetal)'); capBInner.setAttribute('stroke','rgba(0,0,0,.4)'); capBInner.setAttribute('stroke-width','.5');
+  g.appendChild(shadow); g.appendChild(vis); g.appendChild(core); g.appendChild(hit);
+  g.appendChild(capAOuter); g.appendChild(capAInner); g.appendChild(capBOuter); g.appendChild(capBInner);
+  svg.appendChild(g);
+  return {g,shadow,vis,core,hit,capAOuter,capAInner,capBOuter,capBInner};
+}
+
+function applyCableGeometry(els, x1,y1,x2,y2, capRA,capRB, color, isActive, dim){
+  const ctrl = Math.max(30, Math.min(260, Math.abs(y2-y1)/2 + 20));
+  const d = `M ${x1} ${y1} C ${x1} ${y1+ctrl}, ${x2} ${y2-ctrl}, ${x2} ${y2}`;
+  els.g.style.display='';
+  els.g.setAttribute('class','cableG'+(isActive?' active':'')+(dim?' dim':''));
+  els.shadow.setAttribute('d', d);
+  els.vis.setAttribute('d', d); els.vis.setAttribute('stroke', color);
+  els.core.setAttribute('d', d);
+  els.hit.setAttribute('d', d);
+  els.capAOuter.setAttribute('cx', x1); els.capAOuter.setAttribute('cy', y1); els.capAOuter.setAttribute('r', capRA); els.capAOuter.setAttribute('fill', color);
+  els.capAInner.setAttribute('cx', x1); els.capAInner.setAttribute('cy', y1); els.capAInner.setAttribute('r', capRA*0.45);
+  els.capBOuter.setAttribute('cx', x2); els.capBOuter.setAttribute('cy', y2); els.capBOuter.setAttribute('r', capRB); els.capBOuter.setAttribute('fill', color);
+  els.capBInner.setAttribute('cx', x2); els.capBInner.setAttribute('cy', y2); els.capBInner.setAttribute('r', capRB*0.45);
+}
+
+function isActiveCable(c){
+  return !!(hoverJackKey && (key(c.sup.section,c.sup.row,c.sup.pos)===hoverJackKey || key(c.inf.section,c.inf.row,c.inf.pos)===hoverJackKey));
+}
+
+// ---- Global overlay: cross-section cables, recomputed every frame ----
+function redrawGlobalCables(){
   const svg = document.getElementById('cableSvg');
-  const docW = document.documentElement.scrollWidth;
-  const docH = document.documentElement.scrollHeight;
-  svg.setAttribute('width', docW);
-  svg.setAttribute('height', docH);
+  svg.setAttribute('width', document.documentElement.scrollWidth);
+  svg.setAttribute('height', document.documentElement.scrollHeight);
 
-  const arr = cables();
+  const arr = cables().filter(c => c.sup.section !== c.inf.section);
   const liveIds = new Set(arr.map(c=>c.id));
-  for(const [id, els] of cableEls){
-    if(!liveIds.has(id)){ els.g.remove(); cableEls.delete(id); }
-  }
+  for(const [id, els] of globalCableEls){ if(!liveIds.has(id)){ els.g.remove(); globalCableEls.delete(id); } }
 
   arr.forEach(c=>{
     const elA = jackEl(c.sup), elB = jackEl(c.inf);
-    let els = cableEls.get(c.id);
-    if(!elA || !elB){ if(els){ els.g.remove(); cableEls.delete(c.id); } return; }
+    let els = globalCableEls.get(c.id);
+    if(!elA || !elB){ if(els){ els.g.remove(); globalCableEls.delete(c.id); } return; }
     const ra = holeRect(elA), rb = holeRect(elB);
     if(ra.width===0 || rb.width===0){ if(els) els.g.style.display='none'; return; } // endpoint inside a collapsed section
-
-    const x1 = ra.left + ra.width/2;
-    const y1 = ra.top + ra.height/2 + window.scrollY; // center of the sup hole
-    const x2 = rb.left + rb.width/2;
-    const y2 = rb.top + rb.height/2 + window.scrollY; // center of the inf hole
-    const capRA = Math.max(ra.width, ra.height)/2 + 1.5; // covers the hole fully
-    const capRB = Math.max(rb.width, rb.height)/2 + 1.5;
-    const ctrl = Math.max(30, Math.min(260, Math.abs(y2-y1)/2 + 20));
-    const d = `M ${x1} ${y1} C ${x1} ${y1+ctrl}, ${x2} ${y2-ctrl}, ${x2} ${y2}`;
-    const isActive = hoverJackKey && (key(c.sup.section,c.sup.row,c.sup.pos)===hoverJackKey || key(c.inf.section,c.inf.row,c.inf.pos)===hoverJackKey);
-
-    if(!els){
-      const g = document.createElementNS(SVG_NS,'g');
-      const shadow = document.createElementNS(SVG_NS,'path');
-      shadow.setAttribute('class','shadow'); shadow.setAttribute('fill','none'); shadow.setAttribute('transform','translate(0,2)');
-      const vis = document.createElementNS(SVG_NS,'path');
-      vis.setAttribute('class','vis'); vis.setAttribute('fill','none');
-      const core = document.createElementNS(SVG_NS,'path');
-      core.setAttribute('class','core'); core.setAttribute('fill','none');
-      const hit = document.createElementNS(SVG_NS,'path');
-      hit.setAttribute('class','hit'); hit.setAttribute('stroke','transparent'); hit.setAttribute('stroke-width','18'); hit.setAttribute('fill','none');
-      hit.addEventListener('click', ()=> removeCable(c.id));
-      const capAOuter = document.createElementNS(SVG_NS,'circle');
-      capAOuter.setAttribute('stroke','var(--panel)'); capAOuter.setAttribute('stroke-width','1.5'); capAOuter.setAttribute('fill', c.color);
-      const capAInner = document.createElementNS(SVG_NS,'circle');
-      capAInner.setAttribute('fill','url(#plugMetal)'); capAInner.setAttribute('stroke','rgba(0,0,0,.4)'); capAInner.setAttribute('stroke-width','.5');
-      const capBOuter = document.createElementNS(SVG_NS,'circle');
-      capBOuter.setAttribute('stroke','var(--panel)'); capBOuter.setAttribute('stroke-width','1.5'); capBOuter.setAttribute('fill', c.color);
-      const capBInner = document.createElementNS(SVG_NS,'circle');
-      capBInner.setAttribute('fill','url(#plugMetal)'); capBInner.setAttribute('stroke','rgba(0,0,0,.4)'); capBInner.setAttribute('stroke-width','.5');
-      g.appendChild(shadow); g.appendChild(vis); g.appendChild(core); g.appendChild(hit);
-      g.appendChild(capAOuter); g.appendChild(capAInner); g.appendChild(capBOuter); g.appendChild(capBInner);
-      svg.appendChild(g);
-      els = {g,shadow,vis,core,hit,capAOuter,capAInner,capBOuter,capBInner};
-      cableEls.set(c.id, els);
-    }
-    els.g.style.display='';
-    els.g.setAttribute('class','cableG'+(isActive?' active':'')+(hoverJackKey && !isActive?' dim':''));
-    els.shadow.setAttribute('d', d);
-    els.vis.setAttribute('d', d); els.vis.setAttribute('stroke', c.color);
-    els.core.setAttribute('d', d);
-    els.hit.setAttribute('d', d);
-    els.capAOuter.setAttribute('cx', x1); els.capAOuter.setAttribute('cy', y1); els.capAOuter.setAttribute('r', capRA);
-    els.capAInner.setAttribute('cx', x1); els.capAInner.setAttribute('cy', y1); els.capAInner.setAttribute('r', capRA*0.45);
-    els.capBOuter.setAttribute('cx', x2); els.capBOuter.setAttribute('cy', y2); els.capBOuter.setAttribute('r', capRB);
-    els.capBInner.setAttribute('cx', x2); els.capBInner.setAttribute('cy', y2); els.capBInner.setAttribute('r', capRB*0.45);
+    const x1 = ra.left + ra.width/2, y1 = ra.top + ra.height/2 + window.scrollY;
+    const x2 = rb.left + rb.width/2, y2 = rb.top + rb.height/2 + window.scrollY;
+    const capRA = Math.max(ra.width, ra.height)/2 + 1.5, capRB = Math.max(rb.width, rb.height)/2 + 1.5;
+    if(!els){ els = buildCableGroupEls(svg, ()=>removeCable(c.id)); globalCableEls.set(c.id, els); }
+    applyCableGeometry(els, x1,y1,x2,y2, capRA,capRB, c.color, isActiveCable(c), !!hoverJackKey && !isActiveCable(c));
   });
 }
 
-function scheduleRedraw(){ redrawCables(); }
+// ---- Local overlays: same-section cables, laid out in content-space so the
+// browser's own scrolling keeps them pinned with no per-frame work ----
+function localAnchor(jackBtn, layer){
+  const hole = jackBtn.querySelector('.hole') || jackBtn;
+  const hr = hole.getBoundingClientRect();
+  if(hr.width===0) return null; // inside a collapsed section
+  const cr = layer.rowScroll.getBoundingClientRect();
+  return {
+    x: hr.left - cr.left + layer.rowScroll.scrollLeft + hr.width/2,
+    y: hr.top - cr.top + layer.rowScroll.scrollTop + hr.height/2,
+    rad: Math.max(hr.width, hr.height)/2 + 1.5
+  };
+}
 
-(function tick(){ redrawCables(); requestAnimationFrame(tick); })();
+function layoutLocalCable(c){
+  const layer = sectionLayers[c.sup.section];
+  if(!layer) return;
+  const elA = jackEl(c.sup), elB = jackEl(c.inf);
+  let els = localCableEls.get(c.id);
+  if(!elA || !elB){ if(els){ els.g.remove(); localCableEls.delete(c.id); } return; }
+  const a = localAnchor(elA, layer), b = localAnchor(elB, layer);
+  if(!a || !b){ if(els) els.g.style.display='none'; return; }
+  if(!els){ els = buildCableGroupEls(layer.svg, ()=>removeCable(c.id)); localCableEls.set(c.id, els); }
+  applyCableGeometry(els, a.x,a.y,b.x,b.y, a.rad,b.rad, c.color, isActiveCable(c), !!hoverJackKey && !isActiveCable(c));
+}
+
+function relayoutAllLocalCables(){
+  Object.values(sectionLayers).forEach(layer=>{
+    layer.svg.setAttribute('width', layer.grid.scrollWidth);
+    layer.svg.setAttribute('height', layer.grid.scrollHeight);
+  });
+  const arr = cables().filter(c => c.sup.section === c.inf.section);
+  const liveIds = new Set(arr.map(c=>c.id));
+  arr.forEach(layoutLocalCable);
+  for(const [id, els] of localCableEls){ if(!liveIds.has(id)){ els.g.remove(); localCableEls.delete(id); } }
+}
+
+function scheduleRedraw(){ redrawGlobalCables(); relayoutAllLocalCables(); }
+window.addEventListener('resize', scheduleRedraw);
+
+(function tick(){ redrawGlobalCables(); requestAnimationFrame(tick); })();
 
 function renderCableList(){
   const listEl = mode==='sandbox' ? document.getElementById('sandboxList') : document.getElementById('exCableList');
