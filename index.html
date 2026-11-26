@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Simulador de Patchbay · Estudio A</title>
 <style>
-/* layout: header with mode tabs, scrollable list of 6 section panels (each row horizontally scrollable), side legend + exercise/connection list as a bottom sheet on mobile / side panel on desktop */
+/* layout: sticky header with mode tabs; scrollable list of 6 section panels, each a 48-column grid shared by SUP+INF so both rows stay aligned; a page-level SVG overlay draws real cable curves between connected jacks; side panel for the connection list / exercises */
 *,*::before,*::after{box-sizing:border-box}
 body{margin:0;font-size:14px}
 [hidden]{display:none!important}
@@ -34,7 +34,6 @@ img{max-width:100%}
   --good:#5fcf8a; --bad:#e07a74;
   color-scheme: dark;
 }
-*{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--font-body);min-height:100%}
 h1,h2,h3{font-family:var(--font-display);margin:0;text-wrap:balance}
 .wrap{padding-left:max(16px, env(safe-area-inset-left,0px));padding-right:max(16px, env(safe-area-inset-right,0px));padding-block:14px 90px;max-width:1400px;margin:0 auto}
@@ -57,25 +56,27 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 
 .note{font-size:.74rem;color:var(--muted);line-height:1.5;background:var(--panel);border:1px dashed var(--line);border-radius:10px;padding:10px 12px;margin:10px 0}
 
-section.patch{background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-bottom:16px;overflow:hidden}
+section.patch{background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-bottom:16px;overflow:hidden;position:relative}
 section.patch > h2{font-size:.92rem;padding:10px 14px;border-bottom:1px solid var(--line);background:color-mix(in srgb, var(--panel) 92%, var(--ink) 8%)}
 .rowScroll{overflow-x:auto;padding:12px 14px}
-.rowLabel{font-family:var(--font-mono);font-size:.62rem;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;text-transform:uppercase}
-.jackRow{display:flex;gap:10px;width:max-content}
-.group{display:flex;flex-direction:column;gap:5px}
-.groupHead{font-size:.6rem;color:var(--muted);max-width:none;white-space:nowrap;font-weight:600}
+.secGrid{display:grid;grid-template-columns:30px repeat(48, 34px);grid-template-rows:auto 42px auto 42px;column-gap:3px;row-gap:4px;width:max-content}
+.rowTag{position:sticky;left:0;background:var(--panel);z-index:2;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:.6rem;letter-spacing:.06em;color:var(--muted)}
+.groupHead{font-size:.58rem;color:var(--muted);white-space:nowrap;font-weight:600;align-self:end;padding-bottom:2px;overflow:hidden}
+.groupHead.inf{align-self:start;padding-bottom:0;padding-top:2px}
 .groupHead .unconfTag{color:var(--c-unconf);font-style:italic}
-.jacks{display:flex;gap:3px}
 .jack{appearance:none;cursor:pointer;border:1px solid var(--line);background:var(--bg);border-radius:6px;width:34px;height:40px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:2px;position:relative;border-top:3px solid var(--cat,var(--c-neutral))}
 .jack .pos{font-family:var(--font-mono);font-size:.52rem;color:var(--muted)}
 .jack .item{font-family:var(--font-mono);font-size:.62rem;font-weight:700;line-height:1;color:var(--ink);text-align:center}
 .jack.unconfirmed{background:repeating-linear-gradient(45deg, color-mix(in srgb, var(--panel) 80%, var(--c-unconf) 20%), color-mix(in srgb, var(--panel) 80%, var(--c-unconf) 20%) 3px, var(--panel) 3px, var(--panel) 6px);border-top-color:var(--c-unconf)}
 .jack:hover{border-color:var(--accent)}
 .jack.pending{outline:2px solid var(--accent);outline-offset:1px}
-.jack .dots{position:absolute;bottom:2px;display:flex;gap:2px}
-.jack .dots i{width:5px;height:5px;border-radius:50%;display:inline-block}
-.jack.hiA{outline:2px solid var(--good);outline-offset:1px}
-.jack.hiB{outline:2px dashed var(--accent);outline-offset:1px}
+
+#cableSvg{position:absolute;top:0;left:0;pointer-events:none;z-index:6}
+#cableSvg .hit{pointer-events:stroke;cursor:pointer}
+#cableSvg .vis{stroke-width:2.25;opacity:.8;fill:none;transition:stroke-width .12s ease,opacity .12s ease}
+#cableSvg .cableG.active .vis{stroke-width:4;opacity:1}
+#cableSvg .cableG.dim .vis{opacity:.12}
+@media(prefers-reduced-motion:reduce){#cableSvg .vis{transition:none}}
 
 .panels{display:grid;grid-template-columns:1fr;gap:16px}
 .sidebar{position:sticky;top:calc(env(safe-area-inset-top,0px) + 70px);display:flex;flex-direction:column;gap:12px}
@@ -133,7 +134,7 @@ section.patch > h2{font-size:.92rem;padding:10px 14px;border-bottom:1px solid va
 </div></header>
 
 <div class="wrap">
-  <div class="note">Las posiciones con textura rayada no se pudieron confirmar en las fotos originales del patchbay (etiqueta deslavada, sin conector, o sin verificar). Haz clic en un jack de la fila <b>SUP</b> y luego en uno de la fila <b>INF</b> (o al revés) para crear un cable virtual. Un mismo origen puede alimentar varios destinos; un destino solo admite un cable.</div>
+  <div class="note">Las posiciones con textura rayada no se pudieron confirmar en las fotos originales del patchbay (etiqueta deslavada, sin conector, o sin verificar). Haz clic en un jack de la fila <b>SUP</b> y luego en uno de la fila <b>INF</b> (o al revés) para tender un cable. Pasa el mouse sobre un jack conectado para resaltar su cable. Un mismo origen puede alimentar varios destinos; un destino solo admite un cable.</div>
 
   <div class="panels">
     <div id="sections"></div>
@@ -164,12 +165,14 @@ section.patch > h2{font-size:.92rem;padding:10px 14px;border-bottom:1px solid va
   </div>
 </div>
 
+<svg id="cableSvg"></svg>
 <div id="toast"></div>
 
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600&family=JetBrains+Mono:wght@500;700&display=swap">
 
 <script>
 "use strict";
+const SVG_NS = 'http://www.w3.org/2000/svg';
 
 const CATS = {
   mic:{label:'Línea de micrófono', v:'--c-mic'},
@@ -315,45 +318,61 @@ function buildAndRenderSections(){
     const el = document.createElement('section');
     el.className='patch';
     el.innerHTML = `<h2>${sec.title}</h2>`;
-    el.appendChild(renderRow(sec,'sup','SUP'));
-    el.appendChild(renderRow(sec,'inf','INF'));
+    el.appendChild(renderSectionGrid(sec));
     host.appendChild(el);
   });
 }
 
-function renderRow(sec,rowKey,rowLabel){
+function renderSectionGrid(sec){
   const wrap=document.createElement('div');
   wrap.className='rowScroll';
-  const lbl=document.createElement('div');
-  lbl.className='rowLabel'; lbl.textContent=rowLabel;
-  wrap.appendChild(lbl);
-  const rowDiv=document.createElement('div');
-  rowDiv.className='jackRow';
+  const grid=document.createElement('div');
+  grid.className='secGrid';
+
+  const supTag=document.createElement('div'); supTag.className='rowTag';
+  supTag.style.gridColumn='1'; supTag.style.gridRow='1 / 3'; supTag.textContent='SUP';
+  const infTag=document.createElement('div'); infTag.className='rowTag';
+  infTag.style.gridColumn='1'; infTag.style.gridRow='3 / 5'; infTag.textContent='INF';
+  grid.appendChild(supTag); grid.appendChild(infTag);
+
+  renderGridRow(grid, sec, 'sup', 1, 2, false);
+  renderGridRow(grid, sec, 'inf', 3, 4, true);
+
+  wrap.appendChild(grid);
+  return wrap;
+}
+
+function renderGridRow(grid, sec, rowKey, headerRow, jackRow, headerAfter){
   let pos=1;
   sec[rowKey].forEach(group=>{
-    const g=document.createElement('div');
-    g.className='group';
     const confirmed = group.confirmed!==false && group.cat!=='unconfirmed';
-    g.innerHTML = `<div class="groupHead">${group.label}${confirmed?'':' <span class="unconfTag">· sin confirmar</span>'}</div>`;
-    const jr=document.createElement('div'); jr.className='jacks';
+    const start = pos;
+    const head=document.createElement('div');
+    head.className='groupHead'+(headerAfter?' inf':'');
+    head.style.gridColumn = `${start+1} / ${start+1+group.items.length}`;
+    head.style.gridRow = String(headerRow);
+    head.innerHTML = `${group.label}${confirmed?'':' <span class="unconfTag">· sin confirmar</span>'}`;
+    grid.appendChild(head);
+
     group.items.forEach(item=>{
-      const p=pos++;
+      const p = pos++;
       const jackConfirmed = group.confirmed!==false;
       const data={section:sec.id, sectionTitle:sec.title, row:rowKey, pos:p, item, group:group.label, cat:group.cat, confirmed:jackConfirmed};
       JACKS[key(sec.id,rowKey,p)] = data;
       const b=document.createElement('button');
       b.className='jack'+(group.cat==='unconfirmed'||!jackConfirmed?' unconfirmed':'');
       b.style.setProperty('--cat', `var(${CATS[group.cat].v})`);
+      b.style.gridColumn = String(p+1);
+      b.style.gridRow = String(jackRow);
       b.dataset.section=sec.id; b.dataset.row=rowKey; b.dataset.pos=p;
-      b.title = `Sección ${sec.title} · ${rowLabel} ${p} — ${group.label} ${item}` + (jackConfirmed?'':' (sin confirmar)');
-      b.innerHTML = `<span class="pos">${p}</span><span class="item">${item}</span><span class="dots"></span>`;
-      jr.appendChild(b);
+      b.title = `Sección ${sec.title} · ${rowKey.toUpperCase()} ${p} — ${group.label} ${item}` + (jackConfirmed?'':' (sin confirmar)');
+      b.innerHTML = `<span class="pos">${p}</span><span class="item">${item}</span>`;
+      b.addEventListener('click', onJackClick);
+      b.addEventListener('mouseenter', ()=>{ hoverJackKey = key(sec.id,rowKey,p); redrawCables(); });
+      b.addEventListener('mouseleave', ()=>{ if(hoverJackKey===key(sec.id,rowKey,p)){ hoverJackKey=null; redrawCables(); } });
+      grid.appendChild(b);
     });
-    g.appendChild(jr);
-    rowDiv.appendChild(g);
   });
-  wrap.appendChild(rowDiv);
-  return wrap;
 }
 
 // ---- Legend ----
@@ -367,6 +386,7 @@ function renderLegend(){
 // ---- State ----
 let mode='sandbox';
 let pending=null;
+let hoverJackKey=null;
 let sandboxCables = loadSandbox();
 let exerciseCables = [];
 let currentExercise = null;
@@ -415,7 +435,6 @@ function onJackClick(e){
     pending=j; b.classList.add('pending');
     return;
   }
-  // opposite rows -> try to connect
   const supJack = pending.row==='sup'? pending : j;
   const infJack = pending.row==='inf'? pending : j;
   const occupied = cables().some(c => sameJack(c.inf, infJack));
@@ -439,24 +458,56 @@ function removeCable(id){
   renderAll();
 }
 
-function renderDots(){
-  document.querySelectorAll('.jack').forEach(el=>{
-    const dotsHost = el.querySelector('.dots');
-    dotsHost.innerHTML='';
-  });
-  cables().forEach(c=>{
-    [c.sup, c.inf].forEach(j=>{
-      const el = jackEl(j);
-      if(!el) return;
-      const dotsHost = el.querySelector('.dots');
-      if(dotsHost.children.length<4){
-        const i=document.createElement('i');
-        i.style.background=c.color;
-        dotsHost.appendChild(i);
-      }
-    });
+// ---- Cable SVG overlay ----
+function redrawCables(){
+  const svg = document.getElementById('cableSvg');
+  const docW = document.documentElement.scrollWidth;
+  const docH = document.documentElement.scrollHeight;
+  svg.setAttribute('width', docW);
+  svg.setAttribute('height', docH);
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+
+  const arr = cables();
+  arr.forEach(c=>{
+    const elA = jackEl(c.sup), elB = jackEl(c.inf);
+    if(!elA || !elB) return;
+    const ra = elA.getBoundingClientRect(), rb = elB.getBoundingClientRect();
+    const x1 = ra.left + ra.width/2;
+    const y1 = ra.bottom + window.scrollY - 2; // sup jacks exit from the bottom edge
+    const x2 = rb.left + rb.width/2;
+    const y2 = rb.top + window.scrollY + 2; // inf jacks are fed from the top edge
+    const ctrl = Math.max(30, Math.min(260, Math.abs(y2-y1)/2 + 20));
+    const d = `M ${x1} ${y1} C ${x1} ${y1+ctrl}, ${x2} ${y2-ctrl}, ${x2} ${y2}`;
+
+    const isActive = hoverJackKey && (key(c.sup.section,c.sup.row,c.sup.pos)===hoverJackKey || key(c.inf.section,c.inf.row,c.inf.pos)===hoverJackKey);
+    const g = document.createElementNS(SVG_NS,'g');
+    g.setAttribute('class','cableG'+(isActive?' active':'')+(hoverJackKey && !isActive?' dim':''));
+
+    const hit = document.createElementNS(SVG_NS,'path');
+    hit.setAttribute('d', d); hit.setAttribute('class','hit'); hit.setAttribute('stroke','transparent'); hit.setAttribute('stroke-width','16'); hit.setAttribute('fill','none');
+    hit.addEventListener('click', ()=> removeCable(c.id));
+
+    const vis = document.createElementNS(SVG_NS,'path');
+    vis.setAttribute('d', d); vis.setAttribute('stroke', c.color); vis.setAttribute('class','vis'); vis.setAttribute('fill','none');
+
+    const capA = document.createElementNS(SVG_NS,'circle');
+    capA.setAttribute('cx',x1); capA.setAttribute('cy',y1); capA.setAttribute('r',4.5); capA.setAttribute('fill',c.color); capA.setAttribute('stroke','var(--panel)'); capA.setAttribute('stroke-width','1.5');
+    const capB = document.createElementNS(SVG_NS,'circle');
+    capB.setAttribute('cx',x2); capB.setAttribute('cy',y2); capB.setAttribute('r',4.5); capB.setAttribute('fill',c.color); capB.setAttribute('stroke','var(--panel)'); capB.setAttribute('stroke-width','1.5');
+
+    g.appendChild(hit); g.appendChild(vis); g.appendChild(capA); g.appendChild(capB);
+    svg.appendChild(g);
   });
 }
+
+let rafPending=false;
+function scheduleRedraw(){
+  if(rafPending) return;
+  rafPending=true;
+  requestAnimationFrame(()=>{ rafPending=false; redrawCables(); });
+}
+window.addEventListener('resize', scheduleRedraw);
+window.addEventListener('scroll', scheduleRedraw, true); // capture: catches inner .rowScroll scrolling too
 
 function renderCableList(){
   const listEl = mode==='sandbox' ? document.getElementById('sandboxList') : document.getElementById('exCableList');
@@ -477,8 +528,8 @@ function renderCableList(){
 }
 
 function renderAll(){
-  renderDots();
   renderCableList();
+  scheduleRedraw();
   if(mode==='exercise' && currentExercise) renderChecklist(false);
 }
 
@@ -581,7 +632,7 @@ function renderChecklist(evaluate){
     const met = exerciseCables.some(c=> pairEquals(req,c));
     return {req, met};
   });
-  ul.innerHTML = rows.map(r=>`<li class="${evaluate ? (r.met?'met':'unmet') : ''}"><span class="mark">${evaluate ? (r.met?'✓':'✗') : '•'}</span><span>${r.label? '' : ''}${r.req.label}</span></li>`).join('');
+  ul.innerHTML = rows.map(r=>`<li class="${evaluate ? (r.met?'met':'unmet') : ''}"><span class="mark">${evaluate ? (r.met?'✓':'✗') : '•'}</span><span>${r.req.label}</span></li>`).join('');
   if(evaluate){
     const allMet = rows.every(r=>r.met);
     const extra = exerciseCables.length - rows.filter(r=>r.met).length;
@@ -613,7 +664,6 @@ document.getElementById('backToListBtn').addEventListener('click', ()=>{
 renderLegend();
 buildAndRenderSections();
 renderExList();
-document.querySelectorAll('.jack').forEach(b=> b.addEventListener('click', onJackClick));
 renderAll();
 </script>
 </body>
