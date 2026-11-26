@@ -530,9 +530,11 @@ function redrawCables(){
     if(ra.width===0 || rb.width===0){ if(els) els.g.style.display='none'; return; } // endpoint inside a collapsed section
 
     const x1 = ra.left + ra.width/2;
-    const y1 = ra.bottom + window.scrollY - 1; // sup jacks exit from the bottom of the hole
+    const y1 = ra.top + ra.height/2 + window.scrollY; // center of the sup hole
     const x2 = rb.left + rb.width/2;
-    const y2 = rb.top + window.scrollY + 1; // inf jacks are fed from the top of the hole
+    const y2 = rb.top + rb.height/2 + window.scrollY; // center of the inf hole
+    const capRA = Math.max(ra.width, ra.height)/2 + 1.5; // covers the hole fully
+    const capRB = Math.max(rb.width, rb.height)/2 + 1.5;
     const ctrl = Math.max(30, Math.min(260, Math.abs(y2-y1)/2 + 20));
     const d = `M ${x1} ${y1} C ${x1} ${y1+ctrl}, ${x2} ${y2-ctrl}, ${x2} ${y2}`;
     const isActive = hoverJackKey && (key(c.sup.section,c.sup.row,c.sup.pos)===hoverJackKey || key(c.inf.section,c.inf.row,c.inf.pos)===hoverJackKey);
@@ -549,13 +551,13 @@ function redrawCables(){
       hit.setAttribute('class','hit'); hit.setAttribute('stroke','transparent'); hit.setAttribute('stroke-width','18'); hit.setAttribute('fill','none');
       hit.addEventListener('click', ()=> removeCable(c.id));
       const capAOuter = document.createElementNS(SVG_NS,'circle');
-      capAOuter.setAttribute('r',6.5); capAOuter.setAttribute('stroke','var(--panel)'); capAOuter.setAttribute('stroke-width','1.5'); capAOuter.setAttribute('fill', c.color);
+      capAOuter.setAttribute('stroke','var(--panel)'); capAOuter.setAttribute('stroke-width','1.5'); capAOuter.setAttribute('fill', c.color);
       const capAInner = document.createElementNS(SVG_NS,'circle');
-      capAInner.setAttribute('r',3); capAInner.setAttribute('fill','url(#plugMetal)'); capAInner.setAttribute('stroke','rgba(0,0,0,.4)'); capAInner.setAttribute('stroke-width','.5');
+      capAInner.setAttribute('fill','url(#plugMetal)'); capAInner.setAttribute('stroke','rgba(0,0,0,.4)'); capAInner.setAttribute('stroke-width','.5');
       const capBOuter = document.createElementNS(SVG_NS,'circle');
-      capBOuter.setAttribute('r',6.5); capBOuter.setAttribute('stroke','var(--panel)'); capBOuter.setAttribute('stroke-width','1.5'); capBOuter.setAttribute('fill', c.color);
+      capBOuter.setAttribute('stroke','var(--panel)'); capBOuter.setAttribute('stroke-width','1.5'); capBOuter.setAttribute('fill', c.color);
       const capBInner = document.createElementNS(SVG_NS,'circle');
-      capBInner.setAttribute('r',3); capBInner.setAttribute('fill','url(#plugMetal)'); capBInner.setAttribute('stroke','rgba(0,0,0,.4)'); capBInner.setAttribute('stroke-width','.5');
+      capBInner.setAttribute('fill','url(#plugMetal)'); capBInner.setAttribute('stroke','rgba(0,0,0,.4)'); capBInner.setAttribute('stroke-width','.5');
       g.appendChild(shadow); g.appendChild(vis); g.appendChild(core); g.appendChild(hit);
       g.appendChild(capAOuter); g.appendChild(capAInner); g.appendChild(capBOuter); g.appendChild(capBInner);
       svg.appendChild(g);
@@ -568,10 +570,10 @@ function redrawCables(){
     els.vis.setAttribute('d', d); els.vis.setAttribute('stroke', c.color);
     els.core.setAttribute('d', d);
     els.hit.setAttribute('d', d);
-    els.capAOuter.setAttribute('cx', x1); els.capAOuter.setAttribute('cy', y1);
-    els.capAInner.setAttribute('cx', x1); els.capAInner.setAttribute('cy', y1);
-    els.capBOuter.setAttribute('cx', x2); els.capBOuter.setAttribute('cy', y2);
-    els.capBInner.setAttribute('cx', x2); els.capBInner.setAttribute('cy', y2);
+    els.capAOuter.setAttribute('cx', x1); els.capAOuter.setAttribute('cy', y1); els.capAOuter.setAttribute('r', capRA);
+    els.capAInner.setAttribute('cx', x1); els.capAInner.setAttribute('cy', y1); els.capAInner.setAttribute('r', capRA*0.45);
+    els.capBOuter.setAttribute('cx', x2); els.capBOuter.setAttribute('cy', y2); els.capBOuter.setAttribute('r', capRB);
+    els.capBInner.setAttribute('cx', x2); els.capBInner.setAttribute('cy', y2); els.capBInner.setAttribute('r', capRB*0.45);
   });
 }
 
