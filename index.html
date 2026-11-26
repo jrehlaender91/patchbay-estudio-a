@@ -78,10 +78,13 @@ details.patch[open] > summary::after{transform:rotate(90deg)}
 
 #cableSvg{position:absolute;top:0;left:0;pointer-events:none;z-index:6}
 #cableSvg .hit{pointer-events:stroke;cursor:pointer}
-#cableSvg .vis{stroke-width:2.25;opacity:.8;fill:none;transition:stroke-width .12s ease,opacity .12s ease}
-#cableSvg .cableG.active .vis{stroke-width:4;opacity:1}
-#cableSvg .cableG.dim .vis{opacity:.12}
-@media(prefers-reduced-motion:reduce){#cableSvg .vis{transition:none}}
+#cableSvg .shadow{stroke:rgba(0,0,0,.35);stroke-width:7;stroke-linecap:round;fill:none;opacity:.5;transition:opacity .12s ease}
+#cableSvg .vis{stroke-width:5.5;stroke-linecap:round;opacity:.95;fill:none;transition:stroke-width .12s ease,opacity .12s ease}
+#cableSvg .core{stroke:rgba(255,255,255,.4);stroke-width:1.4;stroke-linecap:round;fill:none;opacity:.5;transition:opacity .12s ease}
+#cableSvg .cableG.active .vis{stroke-width:7.5;opacity:1}
+#cableSvg .cableG.active .core{opacity:.75}
+#cableSvg .cableG.dim .vis,#cableSvg .cableG.dim .shadow,#cableSvg .cableG.dim .core{opacity:.08}
+@media(prefers-reduced-motion:reduce){#cableSvg .vis,#cableSvg .shadow,#cableSvg .core{transition:none}}
 
 .panels{display:grid;grid-template-columns:1fr;gap:16px}
 #sections{order:2}
@@ -182,7 +185,13 @@ details.patch[open] > summary::after{transform:rotate(90deg)}
   </div>
 </div>
 
-<svg id="cableSvg"></svg>
+<svg id="cableSvg"><defs>
+  <radialGradient id="plugMetal" cx="35%" cy="30%" r="75%">
+    <stop offset="0%" stop-color="#eef0f3"/>
+    <stop offset="55%" stop-color="#9a9ca3"/>
+    <stop offset="100%" stop-color="#53555c"/>
+  </radialGradient>
+</defs></svg>
 <div id="toast"></div>
 
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600&family=JetBrains+Mono:wght@500;700&display=swap">
@@ -221,11 +230,11 @@ const SECTIONS = [
   {label:'Monitor Insert Return', cat:'return', items:['L','R','C','SW','SL','SR','M-L','M-R']},
 ]},
 {id:'02', title:'02 · 8 Track / External / Aux', sup:[
-  {label:'8 Track Output', cat:'dawsend', items:seq(1,8), confirmed:false},
+  {label:'8 Track Output', cat:'dawsend', items:seq(1,8)},
   {label:'8 Track Insert Send 01-08', cat:'send', items:seq(1,8)},
   {label:'Aux Out 1-4', cat:'send', items:['Aux-1','Aux-2','Aux-3','Aux-4']},
   {label:'Reverb Return 1-2', cat:'return', items:['1L','1R','2L','2R']},
-  {label:'External Source Output No.1', cat:'neutral', items:['L','R','C','SW','SL','SR'], confirmed:false},
+  {label:'External Source Output No.1', cat:'neutral', items:['L','R','C','SW','SL','SR']},
   {label:'External Source Output No.2', cat:'neutral', items:['L','R','C','SW','SL','SR']},
   {label:'Ext. Source Out No.3-4', cat:'neutral', items:['3L','3R','4L','4R']},
   {label:'Cue Out 1-2', cat:'send', items:['Cue-1','Cue-2']},
@@ -530,26 +539,39 @@ function redrawCables(){
 
     if(!els){
       const g = document.createElementNS(SVG_NS,'g');
-      const hit = document.createElementNS(SVG_NS,'path');
-      hit.setAttribute('class','hit'); hit.setAttribute('stroke','transparent'); hit.setAttribute('stroke-width','16'); hit.setAttribute('fill','none');
-      hit.addEventListener('click', ()=> removeCable(c.id));
+      const shadow = document.createElementNS(SVG_NS,'path');
+      shadow.setAttribute('class','shadow'); shadow.setAttribute('fill','none'); shadow.setAttribute('transform','translate(0,2)');
       const vis = document.createElementNS(SVG_NS,'path');
       vis.setAttribute('class','vis'); vis.setAttribute('fill','none');
-      const capA = document.createElementNS(SVG_NS,'circle');
-      capA.setAttribute('r',4.5); capA.setAttribute('stroke','var(--panel)'); capA.setAttribute('stroke-width','1.5');
-      const capB = document.createElementNS(SVG_NS,'circle');
-      capB.setAttribute('r',4.5); capB.setAttribute('stroke','var(--panel)'); capB.setAttribute('stroke-width','1.5');
-      g.appendChild(hit); g.appendChild(vis); g.appendChild(capA); g.appendChild(capB);
+      const core = document.createElementNS(SVG_NS,'path');
+      core.setAttribute('class','core'); core.setAttribute('fill','none');
+      const hit = document.createElementNS(SVG_NS,'path');
+      hit.setAttribute('class','hit'); hit.setAttribute('stroke','transparent'); hit.setAttribute('stroke-width','18'); hit.setAttribute('fill','none');
+      hit.addEventListener('click', ()=> removeCable(c.id));
+      const capAOuter = document.createElementNS(SVG_NS,'circle');
+      capAOuter.setAttribute('r',6.5); capAOuter.setAttribute('stroke','var(--panel)'); capAOuter.setAttribute('stroke-width','1.5'); capAOuter.setAttribute('fill', c.color);
+      const capAInner = document.createElementNS(SVG_NS,'circle');
+      capAInner.setAttribute('r',3); capAInner.setAttribute('fill','url(#plugMetal)'); capAInner.setAttribute('stroke','rgba(0,0,0,.4)'); capAInner.setAttribute('stroke-width','.5');
+      const capBOuter = document.createElementNS(SVG_NS,'circle');
+      capBOuter.setAttribute('r',6.5); capBOuter.setAttribute('stroke','var(--panel)'); capBOuter.setAttribute('stroke-width','1.5'); capBOuter.setAttribute('fill', c.color);
+      const capBInner = document.createElementNS(SVG_NS,'circle');
+      capBInner.setAttribute('r',3); capBInner.setAttribute('fill','url(#plugMetal)'); capBInner.setAttribute('stroke','rgba(0,0,0,.4)'); capBInner.setAttribute('stroke-width','.5');
+      g.appendChild(shadow); g.appendChild(vis); g.appendChild(core); g.appendChild(hit);
+      g.appendChild(capAOuter); g.appendChild(capAInner); g.appendChild(capBOuter); g.appendChild(capBInner);
       svg.appendChild(g);
-      els = {g,hit,vis,capA,capB};
+      els = {g,shadow,vis,core,hit,capAOuter,capAInner,capBOuter,capBInner};
       cableEls.set(c.id, els);
     }
     els.g.style.display='';
     els.g.setAttribute('class','cableG'+(isActive?' active':'')+(hoverJackKey && !isActive?' dim':''));
-    els.hit.setAttribute('d', d);
+    els.shadow.setAttribute('d', d);
     els.vis.setAttribute('d', d); els.vis.setAttribute('stroke', c.color);
-    els.capA.setAttribute('cx', x1); els.capA.setAttribute('cy', y1); els.capA.setAttribute('fill', c.color);
-    els.capB.setAttribute('cx', x2); els.capB.setAttribute('cy', y2); els.capB.setAttribute('fill', c.color);
+    els.core.setAttribute('d', d);
+    els.hit.setAttribute('d', d);
+    els.capAOuter.setAttribute('cx', x1); els.capAOuter.setAttribute('cy', y1);
+    els.capAInner.setAttribute('cx', x1); els.capAInner.setAttribute('cy', y1);
+    els.capBOuter.setAttribute('cx', x2); els.capBOuter.setAttribute('cy', y2);
+    els.capBInner.setAttribute('cx', x2); els.capBInner.setAttribute('cy', y2);
   });
 }
 
