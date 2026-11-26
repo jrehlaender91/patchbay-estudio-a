@@ -56,14 +56,14 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 
 .note{font-size:.74rem;color:var(--muted);line-height:1.5;background:var(--panel);border:1px dashed var(--line);border-radius:10px;padding:10px 12px;margin:10px 0}
 
-details.patch{background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-bottom:12px;overflow:hidden;position:relative;scroll-margin-top:calc(env(safe-area-inset-top,0px) + 96px)}
-details.patch > summary{list-style:none;cursor:pointer;padding:10px 14px;border-bottom:1px solid var(--line);background:color-mix(in srgb, var(--panel) 92%, var(--ink) 8%);display:flex;align-items:center;justify-content:space-between;gap:8px}
+details.patch{background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-bottom:12px;position:relative;scroll-margin-top:calc(env(safe-area-inset-top,0px) + 96px);width:max-content;min-width:100%}
+details.patch > summary{list-style:none;cursor:pointer;padding:10px 14px;border-bottom:1px solid var(--line);background:color-mix(in srgb, var(--panel) 92%, var(--ink) 8%);display:flex;align-items:center;justify-content:space-between;gap:8px;position:sticky;left:0;z-index:7}
 details.patch > summary::-webkit-details-marker{display:none}
 details.patch > summary h2{font-size:.92rem}
 details.patch > summary::after{content:'▸';color:var(--muted);font-size:.8rem;flex:none;transition:transform .15s}
 details.patch[open] > summary::after{transform:rotate(90deg)}
 @media(prefers-reduced-motion:reduce){details.patch > summary::after{transition:none}}
-.rowScroll{overflow-x:auto;padding:12px 14px;position:relative}
+.rowScroll{padding:12px 14px}
 .secGrid{display:grid;grid-template-columns:30px repeat(48, 34px);grid-template-rows:auto 50px auto 50px;column-gap:3px;row-gap:4px;width:max-content}
 .rowTag{position:sticky;left:0;background:var(--panel);z-index:2;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:.6rem;letter-spacing:.06em;color:var(--muted)}
 .groupHead{font-size:.58rem;color:var(--muted);white-space:nowrap;font-weight:600;align-self:end;padding-bottom:2px;overflow:hidden}
@@ -87,7 +87,7 @@ details.patch[open] > summary::after{transform:rotate(90deg)}
 @media(prefers-reduced-motion:reduce){.cableLayer .vis,.cableLayer .shadow,.cableLayer .core{transition:none}}
 
 .panels{display:grid;grid-template-columns:1fr;gap:16px}
-#sections{order:2}
+#sections{order:2;overflow-x:auto;position:relative}
 .sidebar{position:static;order:1;display:flex;flex-direction:column;gap:12px}
 @media(min-width:980px){
   .panels{grid-template-columns:1fr 340px}
@@ -157,7 +157,13 @@ details.patch[open] > summary::after{transform:rotate(90deg)}
   <div class="note">Las posiciones con textura rayada no se pudieron confirmar en las fotos originales del patchbay (etiqueta deslavada, sin conector, o sin verificar). Haz clic en un jack de la fila <b>SUP</b> y luego en uno de la fila <b>INF</b> (o al revés) para tender un cable. Pasa el mouse sobre un jack conectado para resaltar su cable. Un mismo origen puede alimentar varios destinos; un destino solo admite un cable.</div>
 
   <div class="panels">
-    <div id="sections"></div>
+    <div id="sections"><svg id="cableSvg" class="cableLayer" width="0" height="0"><defs>
+      <radialGradient id="plugMetal" cx="35%" cy="30%" r="75%">
+        <stop offset="0%" stop-color="#eef0f3"/>
+        <stop offset="55%" stop-color="#9a9ca3"/>
+        <stop offset="100%" stop-color="#53555c"/>
+      </radialGradient>
+    </defs></svg></div>
     <aside class="sidebar">
       <div class="card" id="sandboxCard">
         <h3>Cables activos (sandbox)</h3>
@@ -185,13 +191,6 @@ details.patch[open] > summary::after{transform:rotate(90deg)}
   </div>
 </div>
 
-<svg id="cableSvg" class="cableLayer"><defs>
-  <radialGradient id="plugMetal" cx="35%" cy="30%" r="75%">
-    <stop offset="0%" stop-color="#eef0f3"/>
-    <stop offset="55%" stop-color="#9a9ca3"/>
-    <stop offset="100%" stop-color="#53555c"/>
-  </radialGradient>
-</defs></svg>
 <div id="toast"></div>
 
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600&family=JetBrains+Mono:wght@500;700&display=swap">
@@ -377,16 +376,6 @@ function renderSectionGrid(sec){
   renderGridRow(grid, sec, 'inf', 3, 4, true);
 
   wrap.appendChild(grid);
-
-  // A cable overlay that lives INSIDE this section's own scrolling box: the
-  // browser scrolls it natively together with the jacks (no JS needed per
-  // frame), which is what keeps cables perfectly pinned during horizontal
-  // touch-scrolling. Used for cables where both ends are in this section.
-  const localSvg = document.createElementNS(SVG_NS,'svg');
-  localSvg.setAttribute('class','cableLayer localCableSvg');
-  wrap.appendChild(localSvg);
-  sectionLayers[sec.id] = {rowScroll: wrap, grid, svg: localSvg};
-
   return wrap;
 }
 
@@ -437,7 +426,6 @@ function renderLegend(){
 let mode='sandbox';
 let pending=null;
 let hoverJackKey=null;
-const sectionLayers = {}; // sec.id -> {rowScroll, grid, svg}
 let sandboxCables = loadSandbox();
 let exerciseCables = [];
 let currentExercise = null;
@@ -464,11 +452,6 @@ function sameJack(a,b){ return a.section===b.section && a.row===b.row && a.pos==
 
 function jackEl(j){
   return document.querySelector(`.jack[data-section="${j.section}"][data-row="${j.row}"][data-pos="${j.pos}"]`);
-}
-
-function holeRect(btn){
-  const h = btn.querySelector('.hole');
-  return h ? h.getBoundingClientRect() : btn.getBoundingClientRect();
 }
 
 function describeJack(j){
@@ -515,15 +498,14 @@ function removeCable(id){
 }
 
 // ---- Cable rendering ----
-// Cables where both ends sit in the same section are drawn on that section's
-// OWN svg overlay, laid out in content-space coordinates (scrollLeft added
-// back in). Because that overlay is a plain child of the section's scrolling
-// box, the browser scrolls it together with the jacks by itself — no JS runs
-// per frame, so it can never lag behind a touch-scroll gesture. Cables that
-// cross sections can't use that trick (the two ends scroll independently), so
-// they're drawn on a page-level overlay recomputed every animation frame.
-const globalCableEls = new Map(); // cable id -> els
-const localCableEls = new Map();  // cable id -> els
+// Every cable is drawn on ONE overlay that lives inside #sections — the
+// single shared horizontally-scrolling box that holds every section's grid.
+// Coordinates are "content-space" (the section's own scrollLeft is added
+// back in), and since the overlay is a plain child of that same scrolling
+// box, the browser scrolls it together with every jack natively. No JS runs
+// on scroll at all, so a cable can never visually lag behind a touch-scroll
+// gesture, whether both its ends are in one section or in different ones.
+const cableEls = new Map(); // cable id -> els
 
 function buildCableGroupEls(svg, onRemove){
   const g = document.createElementNS(SVG_NS,'g');
@@ -569,71 +551,43 @@ function isActiveCable(c){
   return !!(hoverJackKey && (key(c.sup.section,c.sup.row,c.sup.pos)===hoverJackKey || key(c.inf.section,c.inf.row,c.inf.pos)===hoverJackKey));
 }
 
-// ---- Global overlay: cross-section cables, recomputed every frame ----
-function redrawGlobalCables(){
-  const svg = document.getElementById('cableSvg');
-  svg.setAttribute('width', document.documentElement.scrollWidth);
-  svg.setAttribute('height', document.documentElement.scrollHeight);
-
-  const arr = cables().filter(c => c.sup.section !== c.inf.section);
-  const liveIds = new Set(arr.map(c=>c.id));
-  for(const [id, els] of globalCableEls){ if(!liveIds.has(id)){ els.g.remove(); globalCableEls.delete(id); } }
-
-  arr.forEach(c=>{
-    const elA = jackEl(c.sup), elB = jackEl(c.inf);
-    let els = globalCableEls.get(c.id);
-    if(!elA || !elB){ if(els){ els.g.remove(); globalCableEls.delete(c.id); } return; }
-    const ra = holeRect(elA), rb = holeRect(elB);
-    if(ra.width===0 || rb.width===0){ if(els) els.g.style.display='none'; return; } // endpoint inside a collapsed section
-    const x1 = ra.left + ra.width/2, y1 = ra.top + ra.height/2 + window.scrollY;
-    const x2 = rb.left + rb.width/2, y2 = rb.top + rb.height/2 + window.scrollY;
-    const capRA = Math.max(ra.width, ra.height)/2 + 1.5, capRB = Math.max(rb.width, rb.height)/2 + 1.5;
-    if(!els){ els = buildCableGroupEls(svg, ()=>removeCable(c.id)); globalCableEls.set(c.id, els); }
-    applyCableGeometry(els, x1,y1,x2,y2, capRA,capRB, c.color, isActiveCable(c), !!hoverJackKey && !isActiveCable(c));
-  });
-}
-
-// ---- Local overlays: same-section cables, laid out in content-space so the
-// browser's own scrolling keeps them pinned with no per-frame work ----
-function localAnchor(jackBtn, layer){
+function contentAnchor(jackBtn){
   const hole = jackBtn.querySelector('.hole') || jackBtn;
   const hr = hole.getBoundingClientRect();
   if(hr.width===0) return null; // inside a collapsed section
-  const cr = layer.rowScroll.getBoundingClientRect();
+  const sectionsEl = document.getElementById('sections');
+  const cr = sectionsEl.getBoundingClientRect();
   return {
-    x: hr.left - cr.left + layer.rowScroll.scrollLeft + hr.width/2,
-    y: hr.top - cr.top + layer.rowScroll.scrollTop + hr.height/2,
+    x: hr.left - cr.left + sectionsEl.scrollLeft + hr.width/2,
+    y: hr.top - cr.top + sectionsEl.scrollTop + hr.height/2,
     rad: Math.max(hr.width, hr.height)/2 + 1.5
   };
 }
 
-function layoutLocalCable(c){
-  const layer = sectionLayers[c.sup.section];
-  if(!layer) return;
+function layoutCable(c){
   const elA = jackEl(c.sup), elB = jackEl(c.inf);
-  let els = localCableEls.get(c.id);
-  if(!elA || !elB){ if(els){ els.g.remove(); localCableEls.delete(c.id); } return; }
-  const a = localAnchor(elA, layer), b = localAnchor(elB, layer);
-  if(!a || !b){ if(els) els.g.style.display='none'; return; }
-  if(!els){ els = buildCableGroupEls(layer.svg, ()=>removeCable(c.id)); localCableEls.set(c.id, els); }
+  let els = cableEls.get(c.id);
+  if(!elA || !elB){ if(els){ els.g.remove(); cableEls.delete(c.id); } return; }
+  const a = contentAnchor(elA), b = contentAnchor(elB);
+  if(!a || !b){ if(els) els.g.style.display='none'; return; } // endpoint inside a collapsed section
+  if(!els){ els = buildCableGroupEls(document.getElementById('cableSvg'), ()=>removeCable(c.id)); cableEls.set(c.id, els); }
   applyCableGeometry(els, a.x,a.y,b.x,b.y, a.rad,b.rad, c.color, isActiveCable(c), !!hoverJackKey && !isActiveCable(c));
 }
 
-function relayoutAllLocalCables(){
-  Object.values(sectionLayers).forEach(layer=>{
-    layer.svg.setAttribute('width', layer.grid.scrollWidth);
-    layer.svg.setAttribute('height', layer.grid.scrollHeight);
-  });
-  const arr = cables().filter(c => c.sup.section === c.inf.section);
+function redrawCables(){
+  const sectionsEl = document.getElementById('sections');
+  const svg = document.getElementById('cableSvg');
+  svg.setAttribute('width', sectionsEl.scrollWidth);
+  svg.setAttribute('height', sectionsEl.scrollHeight);
+
+  const arr = cables();
   const liveIds = new Set(arr.map(c=>c.id));
-  arr.forEach(layoutLocalCable);
-  for(const [id, els] of localCableEls){ if(!liveIds.has(id)){ els.g.remove(); localCableEls.delete(id); } }
+  arr.forEach(layoutCable);
+  for(const [id, els] of cableEls){ if(!liveIds.has(id)){ els.g.remove(); cableEls.delete(id); } }
 }
 
-function scheduleRedraw(){ redrawGlobalCables(); relayoutAllLocalCables(); }
+function scheduleRedraw(){ redrawCables(); }
 window.addEventListener('resize', scheduleRedraw);
-
-(function tick(){ redrawGlobalCables(); requestAnimationFrame(tick); })();
 
 function renderCableList(){
   const listEl = mode==='sandbox' ? document.getElementById('sandboxList') : document.getElementById('exCableList');
