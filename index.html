@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Simulador de Patchbay · Estudio A</title>
+<style>
+/* layout: header with mode tabs, scrollable list of 6 section panels (each row horizontally scrollable), side legend + exercise/connection list as a bottom sheet on mobile / side panel on desktop */
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;font-size:14px}
+[hidden]{display:none!important}
+img{max-width:100%}
+:root{
+  --bg:#f3f1ec; --panel:#ffffff; --ink:#1c1b18; --muted:#6b6660; --line:#ddd7cc;
+  --accent:#c4542f; --accent-ink:#ffffff;
+  --c-mic:#3f7cc4; --c-preamp:#c4473f; --c-send:#c49a2f; --c-return:#3f9d5f; --c-dawsend:#c4762f; --c-neutral:#8d9199; --c-outboard:#8a5fc4; --c-unconf:#aaa39a;
+  --good:#2f9e5a; --bad:#c43f3f;
+  --font-display:'Space Grotesk',sans-serif; --font-body:'Inter',sans-serif; --font-mono:'JetBrains Mono',monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15140f; --panel:#201f19; --ink:#f1ede4; --muted:#a39d91; --line:#36332b;
+    --accent:#e07a4e; --accent-ink:#1c1200;
+    --c-mic:#6fa3e0; --c-preamp:#e0766f; --c-send:#e0bd5f; --c-return:#6fcf8f; --c-dawsend:#e0a267; --c-neutral:#9ba0a8; --c-outboard:#b393e0; --c-unconf:#6b665c;
+    --good:#5fcf8a; --bad:#e07a74;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15140f; --panel:#201f19; --ink:#f1ede4; --muted:#a39d91; --line:#36332b;
+  --accent:#e07a4e; --accent-ink:#1c1200;
+  --c-mic:#6fa3e0; --c-preamp:#e0766f; --c-send:#e0bd5f; --c-return:#6fcf8f; --c-dawsend:#e0a267; --c-neutral:#9ba0a8; --c-outboard:#b393e0; --c-unconf:#6b665c;
+  --good:#5fcf8a; --bad:#e07a74;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);min-height:100%}
+h1,h2,h3{font-family:var(--font-display);margin:0;text-wrap:balance}
+.wrap{padding-left:max(16px, env(safe-area-inset-left,0px));padding-right:max(16px, env(safe-area-inset-right,0px));padding-block:14px 90px;max-width:1400px;margin:0 auto}
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);border-bottom:1px solid var(--line);padding-block:10px;margin-bottom:10px}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:21;background:var(--bg)}
+.topRow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between}
+.title{display:flex;flex-direction:column;gap:2px}
+.title h1{font-size:1.15rem}
+.title small{color:var(--muted);font-size:.72rem}
+.tabs{display:flex;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:3px}
+.tab{appearance:none;border:none;background:transparent;color:var(--muted);font-family:var(--font-body);font-weight:600;font-size:.82rem;padding:7px 14px;border-radius:999px;cursor:pointer}
+.tab.active{background:var(--accent);color:var(--accent-ink)}
+.ghost-btn{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-family:var(--font-body);font-size:.78rem;font-weight:600;padding:7px 12px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.ghost-btn:hover{border-color:var(--accent)}
+
+.legend{display:flex;flex-wrap:wrap;gap:8px 14px;margin:10px 0 4px;font-size:.72rem;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block;flex:none}
+.legend i.unconf{background:repeating-linear-gradient(45deg,var(--c-unconf),var(--c-unconf) 2px,transparent 2px,transparent 4px)}
+
+.note{font-size:.74rem;color:var(--muted);line-height:1.5;background:var(--panel);border:1px dashed var(--line);border-radius:10px;padding:10px 12px;margin:10px 0}
+
+section.patch{background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-bottom:16px;overflow:hidden}
+section.patch > h2{font-size:.92rem;padding:10px 14px;border-bottom:1px solid var(--line);background:color-mix(in srgb, var(--panel) 92%, var(--ink) 8%)}
+.rowScroll{overflow-x:auto;padding:12px 14px}
+.rowLabel{font-family:var(--font-mono);font-size:.62rem;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;text-transform:uppercase}
+.jackRow{display:flex;gap:10px;width:max-content}
+.group{display:flex;flex-direction:column;gap:5px}
+.groupHead{font-size:.6rem;color:var(--muted);max-width:none;white-space:nowrap;font-weight:600}
+.groupHead .unconfTag{color:var(--c-unconf);font-style:italic}
+.jacks{display:flex;gap:3px}
+.jack{appearance:none;cursor:pointer;border:1px solid var(--line);background:var(--bg);border-radius:6px;width:34px;height:40px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:2px;position:relative;border-top:3px solid var(--cat,var(--c-neutral))}
+.jack .pos{font-family:var(--font-mono);font-size:.52rem;color:var(--muted)}
+.jack .item{font-family:var(--font-mono);font-size:.62rem;font-weight:700;line-height:1;color:var(--ink);text-align:center}
+.jack.unconfirmed{background:repeating-linear-gradient(45deg, color-mix(in srgb, var(--panel) 80%, var(--c-unconf) 20%), color-mix(in srgb, var(--panel) 80%, var(--c-unconf) 20%) 3px, var(--panel) 3px, var(--panel) 6px);border-top-color:var(--c-unconf)}
+.jack:hover{border-color:var(--accent)}
+.jack.pending{outline:2px solid var(--accent);outline-offset:1px}
+.jack .dots{position:absolute;bottom:2px;display:flex;gap:2px}
+.jack .dots i{width:5px;height:5px;border-radius:50%;display:inline-block}
+.jack.hiA{outline:2px solid var(--good);outline-offset:1px}
+.jack.hiB{outline:2px dashed var(--accent);outline-offset:1px}
+
+.panels{display:grid;grid-template-columns:1fr;gap:16px}
+.sidebar{position:sticky;top:calc(env(safe-area-inset-top,0px) + 70px);display:flex;flex-direction:column;gap:12px}
+@media(min-width:980px){.panels{grid-template-columns:1fr 340px}}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.card h3{font-size:.85rem;margin-bottom:8px}
+.cableList{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto}
+.cableList li{display:flex;align-items:center;gap:8px;font-size:.72rem;border-left:4px solid var(--wire,var(--accent));background:var(--bg);border-radius:6px;padding:6px 8px}
+.cableList li .desc{flex:1;min-width:0;line-height:1.3}
+.cableList li button{appearance:none;border:none;background:transparent;color:var(--bad);font-size:.9rem;cursor:pointer;padding:2px 4px;flex:none}
+.empty{color:var(--muted);font-size:.74rem;font-style:italic}
+
+.exList{display:flex;flex-direction:column;gap:8px}
+.exCard{border:1px solid var(--line);border-radius:10px;padding:9px 11px;cursor:pointer}
+.exCard.active{border-color:var(--accent)}
+.exCard h4{font-size:.78rem;margin-bottom:2px}
+.exCard p{font-size:.68rem;color:var(--muted);margin:0}
+.badge{font-size:.62rem;font-weight:700;padding:1px 7px;border-radius:999px;display:inline-block;margin-left:6px}
+.badge.ok{background:color-mix(in srgb, var(--good) 20%, transparent);color:var(--good)}
+.badge.pending{background:color-mix(in srgb, var(--muted) 20%, transparent);color:var(--muted)}
+
+.exWork{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.checklist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:.7rem}
+.checklist li{display:flex;gap:6px;align-items:flex-start}
+.checklist li .mark{flex:none;font-weight:800}
+.checklist li.met .mark{color:var(--good)}
+.checklist li.unmet .mark{color:var(--bad)}
+.btnRow{display:flex;gap:8px;flex-wrap:wrap}
+.btnRow button{appearance:none;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:.74rem;font-weight:600;padding:7px 11px;border-radius:8px;cursor:pointer}
+.btnRow button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--bg);font-size:.78rem;padding:9px 16px;border-radius:999px;opacity:0;pointer-events:none;transition:opacity .2s, transform .2s;z-index:50;max-width:90vw;text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<header class="top"><div class="wrap" style="padding-block:0">
+  <div class="topRow">
+    <div class="title">
+      <h1>Patchbay · Estudio A</h1>
+      <small>Reconstrucción fotográfica del patchbay — sin verificación eléctrica — Rev. 04</small>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <div class="tabs">
+        <button class="tab active" data-mode="sandbox">Sandbox</button>
+        <button class="tab" data-mode="exercise">Ejercicios</button>
+      </div>
+      <button class="ghost-btn" id="clearBtn">Limpiar cables</button>
+    </div>
+  </div>
+  <div class="legend" id="legend"></div>
+</div></header>
+
+<div class="wrap">
+  <div class="note">Las posiciones con textura rayada no se pudieron confirmar en las fotos originales del patchbay (etiqueta deslavada, sin conector, o sin verificar). Haz clic en un jack de la fila <b>SUP</b> y luego en uno de la fila <b>INF</b> (o al revés) para crear un cable virtual. Un mismo origen puede alimentar varios destinos; un destino solo admite un cable.</div>
+
+  <div class="panels">
+    <div id="sections"></div>
+    <aside class="sidebar">
+      <div class="card" id="sandboxCard">
+        <h3>Cables activos (sandbox)</h3>
+        <ul class="cableList" id="sandboxList"></ul>
+      </div>
+      <div class="card" id="exerciseListCard" hidden>
+        <h3>Ejercicios</h3>
+        <div class="exList" id="exList"></div>
+      </div>
+      <div class="card" id="exerciseWorkCard" hidden>
+        <h3 id="exTitle">Ejercicio</h3>
+        <p style="font-size:.74rem;color:var(--muted);margin:0 0 8px" id="exDesc"></p>
+        <ul class="cableList" id="exCableList"></ul>
+        <div class="exWork">
+          <ul class="checklist" id="exChecklist"></ul>
+          <div class="btnRow">
+            <button class="primary" id="verifyBtn">Verificar</button>
+            <button id="hintBtn">Pista</button>
+            <button id="resetExBtn">Reiniciar</button>
+            <button id="backToListBtn">← Lista</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600&family=JetBrains+Mono:wght@500;700&display=swap">
+
+<script>
+"use strict";
+
+const CATS = {
+  mic:{label:'Línea de micrófono', v:'--c-mic'},
+  preamp:{label:'Entrada de preamp', v:'--c-preamp'},
+  send:{label:'Envío / auxiliar', v:'--c-send'},
+  return:{label:'Retorno / DAW return', v:'--c-return'},
+  dawsend:{label:'Envío a DAW', v:'--c-dawsend'},
+  neutral:{label:'Neutro / interfaz', v:'--c-neutral'},
+  outboard:{label:'Outboard', v:'--c-outboard'},
+  unconfirmed:{label:'Sin confirmar', v:'--c-unconf'}
+};
+
+function seq(start,end,prefix,suffix){const a=[];for(let i=start;i<=end;i++)a.push((prefix||'')+i+(suffix||''));return a;}
+
+const SECTIONS = [
+{id:'01', title:'01 · Mic / Monitor', sup:[
+  {label:'Studio Microphone Line 01-08', cat:'mic', items:seq(1,8)},
+  {label:'Studio Microphone Line 09-16', cat:'mic', items:seq(9,16)},
+  {label:'Studio Microphone Line 17-24', cat:'mic', items:seq(17,24)},
+  {label:'Studio Microphone Line 25-32', cat:'mic', items:seq(25,32)},
+  {label:'Loudspeaker Output A & M-1', cat:'neutral', items:['L','R','C','SW','SL','SR','M-L','M-R']},
+  {label:'Monitor Insert Send', cat:'send', items:['L','R','C','SW','SL','SR','M-L','M-R']},
+], inf:[
+  {label:'Microphone Preamp Input 01-08', cat:'preamp', items:seq(1,8)},
+  {label:'Microphone Preamp Input 09-16', cat:'preamp', items:seq(9,16)},
+  {label:'Microphone Preamp Input 17-24', cat:'preamp', items:seq(17,24)},
+  {label:'Studio Mic Line (Iso Booth B)', cat:'mic', items:seq(1,8)},
+  {label:'Amplifier Input A & M-1', cat:'neutral', items:['L','R','C','SW','SL','SR','M-L','M-R']},
+  {label:'Monitor Insert Return', cat:'return', items:['L','R','C','SW','SL','SR','M-L','M-R']},
+]},
+{id:'02', title:'02 · 8 Track / External / Aux', sup:[
+  {label:'8 Track Output', cat:'dawsend', items:seq(1,8), confirmed:false},
+  {label:'8 Track Insert Send 01-08', cat:'send', items:seq(1,8)},
+  {label:'Aux Out 1-4', cat:'send', items:['Aux-1','Aux-2','Aux-3','Aux-4']},
+  {label:'Reverb Return 1-2', cat:'return', items:['1L','1R','2L','2R']},
+  {label:'External Source Output No.1', cat:'neutral', items:['L','R','C','SW','SL','SR'], confirmed:false},
+  {label:'External Source Output No.2', cat:'neutral', items:['L','R','C','SW','SL','SR']},
+  {label:'Ext. Source Out No.3-4', cat:'neutral', items:['3L','3R','4L','4R']},
+  {label:'Cue Out 1-2', cat:'send', items:['Cue-1','Cue-2']},
+  {label:'M-1 I/S', cat:'neutral', items:['1','2']},
+  {label:'M Insert Send', cat:'send', items:['Sen-L','Sen-R']},
+  {label:'IM Ret Send', cat:'send', items:['Sen-L','Sen-R']},
+], inf:[
+  {label:'External Source Input', cat:'neutral', items:seq(1,8)},
+  {label:'8 Track Insert Return', cat:'return', items:seq(1,8)},
+  {label:'Aux Out 5-6', cat:'send', items:['Aux-5L','Aux-5R','Aux-6L','Aux-6R']},
+  {label:'Reverb Return 3-4', cat:'return', items:['3L','3R','4L','4R']},
+  {label:'Monitor External Input No.1', cat:'neutral', items:['L','R','C','SW','SL','SR']},
+  {label:'Monitor External Input No.2', cat:'neutral', items:['L','R','C','SW','SL','SR']},
+  {label:'Mon Ext Input No.3-4', cat:'neutral', items:['3L','3R','4L','4R']},
+  {label:'Cue Out 3-4', cat:'send', items:['Cue-3','Cue-4']},
+  {label:'Sin conector', cat:'unconfirmed', items:['X','X'], confirmed:false},
+  {label:'M Insert Ret', cat:'return', items:['Ret-L','Ret-R']},
+  {label:'IM Ret Ret', cat:'return', items:['Ret-L','Ret-R']},
+]},
+{id:'03', title:'03 · Channel Inserts', sup:[
+  {label:'Channel Insert Send (A) 01-08', cat:'send', items:seq(1,8,'','-A')},
+  {label:'Channel Insert Send (B) 01-08', cat:'send', items:seq(1,8,'','-B')},
+  {label:'Channel Insert Send (A) 09-16', cat:'send', items:seq(9,16,'','-A')},
+  {label:'Channel Insert Send (B) 09-16', cat:'send', items:seq(9,16,'','-B')},
+  {label:'Channel Insert Send (A) 17-24', cat:'send', items:seq(17,24,'','-A')},
+  {label:'Channel Insert Send (B) 17-24', cat:'send', items:seq(17,24,'','-B')},
+], inf:[
+  {label:'Channel Insert Return (A) 01-08', cat:'return', items:seq(1,8,'','-A')},
+  {label:'Channel Insert Return (B) 01-08', cat:'return', items:seq(1,8,'','-B')},
+  {label:'Channel Insert Return (A) 09-16', cat:'return', items:seq(9,16,'','-A')},
+  {label:'Channel Insert Return (B) 09-16', cat:'return', items:seq(9,16,'','-B')},
+  {label:'Channel Insert Return (A) 17-24', cat:'return', items:seq(17,24,'','-A')},
+  {label:'Channel Insert Return (B) 17-24', cat:'return', items:seq(17,24,'','-B')},
+]},
+{id:'04', title:'04 · DAW / Avid', sup:[
+  {label:'DAW Send 01-08', cat:'dawsend', items:seq(1,8)},
+  {label:'DAW Send 09-16', cat:'dawsend', items:seq(9,16)},
+  {label:'DAW Send 17-24', cat:'dawsend', items:seq(17,24)},
+  {label:'Avid 16x16 Outputs (01-08)', cat:'neutral', items:seq(1,8)},
+  {label:'Avid 16x16 Outputs (09-16)', cat:'neutral', items:seq(9,16)},
+  {label:'Avid 8x8 Outputs (17-24)', cat:'neutral', items:seq(17,24)},
+], inf:[
+  {label:'Avid 16x16 Inputs (01-08)', cat:'neutral', items:seq(1,8)},
+  {label:'Avid 16x16 Inputs (09-16)', cat:'neutral', items:seq(9,16)},
+  {label:'Avid 8x8 Inputs (17-24)', cat:'neutral', items:seq(17,24)},
+  {label:'DAW Return 01-08', cat:'return', items:seq(1,8)},
+  {label:'DAW Return 09-16', cat:'return', items:seq(9,16)},
+  {label:'DAW Return 17-24', cat:'return', items:seq(17,24)},
+]},
+{id:'05', title:'05 · Tape Monitor / Outboard', sup:[
+  {label:'Tape Monitor Return 01-08', cat:'return', items:seq(1,8)},
+  {label:'Tape Monitor Return 09-16', cat:'return', items:seq(9,16)},
+  {label:'Tape Monitor Return 17-24', cat:'return', items:seq(17,24)},
+  {label:'Lexicon PCM 96', cat:'outboard', items:['L Out','R Out']},
+  {label:'Yamaha SPX', cat:'outboard', items:['L Out','R Out']},
+  {label:'Manley Vox Box', cat:'outboard', items:['1 Out','2 Out']},
+  {label:'Manley Pultec', cat:'outboard', items:['L Out','R Out']},
+  {label:'API 512 Mic Pre', cat:'outboard', items:['1 Out','2 Out','3 Out','4 Out']},
+  {label:'API 550A EQ', cat:'outboard', items:['1 Out','2 Out','3 Out','4 Out']},
+  {label:'SSL G Comp', cat:'outboard', items:['Out L','Out R']},
+  {label:'SSL X-Rack Line Outputs', cat:'outboard', items:['Mix Out L','Mix Out R','Rec Out L','Rec Out R','Main Out L','Main Out R']},
+], inf:[
+  {label:'Tape Monitor Send 01-08', cat:'send', items:seq(1,8)},
+  {label:'Tape Monitor Send 09-16', cat:'send', items:seq(9,16)},
+  {label:'Tape Monitor Send 17-24', cat:'send', items:seq(17,24)},
+  {label:'Lexicon PCM 96', cat:'outboard', items:['L In','R In']},
+  {label:'Yamaha SPX', cat:'outboard', items:['L In','R In']},
+  {label:'Manley Vox Box', cat:'outboard', items:['1 In','2 In']},
+  {label:'Manley Pultec (etiqueta conserva "Out")', cat:'outboard', items:['L Out','R Out'], confirmed:false},
+  {label:'API 512 Mic Pre', cat:'outboard', items:['1 In','2 In','3 In','4 In']},
+  {label:'API 550A EQ', cat:'outboard', items:['1 In','2 In','3 In','4 In']},
+  {label:'SSL G Comp', cat:'outboard', items:['In L','In R']},
+  {label:'SSL X-Rack Line Inputs', cat:'outboard', items:['3 In','4 In','5 In','6 In','7 In','8 In']},
+]},
+{id:'06', title:'06 · Tie Lines / Aviom / Outboard', sup:[
+  {label:'Tie Line Panel 01-08', cat:'neutral', items:seq(1,8)},
+  {label:'Aviom System Inputs 01-08', cat:'neutral', items:seq(1,8)},
+  {label:'Tascam HD1000', cat:'outboard', items:['L Out','R Out']},
+  {label:'GML Stereo EQ', cat:'outboard', items:['L Out','R Out']},
+  {label:'Distressor', cat:'outboard', items:['1 Out','2 Out']},
+  {label:'76 KT', cat:'outboard', items:['Out']},
+  {label:'KT 2A', cat:'outboard', items:['Out']},
+  {label:'Sin confirmar', cat:'unconfirmed', items:seq(25,40), confirmed:false},
+  {label:'Mic Lines (adicional)', cat:'mic', items:['41','42'], confirmed:false},
+  {label:'Sin confirmar', cat:'unconfirmed', items:seq(43,48), confirmed:false},
+], inf:[
+  {label:'Tie Line Panel 09-16', cat:'neutral', items:seq(9,16)},
+  {label:'Aviom System Inputs 09-16', cat:'neutral', items:seq(9,16)},
+  {label:'Tascam HD1000', cat:'outboard', items:['L In','R In']},
+  {label:'GML Stereo EQ', cat:'outboard', items:['L In','R In']},
+  {label:'Distressor', cat:'outboard', items:['1 In','2 In']},
+  {label:'76 KT', cat:'outboard', items:['In']},
+  {label:'KT 2A', cat:'outboard', items:['In']},
+  {label:'Sin confirmar', cat:'unconfirmed', items:seq(25,40), confirmed:false},
+  {label:'Mic Lines (adicional)', cat:'mic', items:['41','42','43'], confirmed:false},
+  {label:'Etiqueta huérfana', cat:'unconfirmed', items:['4 In'], confirmed:false},
+  {label:'Sin confirmar', cat:'unconfirmed', items:seq(45,48), confirmed:false},
+]},
+];
+
+const JACKS = {}; // key: section|row|pos -> jack data
+function key(s,r,p){return s+'|'+r+'|'+p;}
+
+function buildAndRenderSections(){
+  const host = document.getElementById('sections');
+  SECTIONS.forEach(sec=>{
+    const el = document.createElement('section');
+    el.className='patch';
+    el.innerHTML = `<h2>${sec.title}</h2>`;
+    el.appendChild(renderRow(sec,'sup','SUP'));
+    el.appendChild(renderRow(sec,'inf','INF'));
+    host.appendChild(el);
+  });
+}
+
+function renderRow(sec,rowKey,rowLabel){
+  const wrap=document.createElement('div');
+  wrap.className='rowScroll';
+  const lbl=document.createElement('div');
+  lbl.className='rowLabel'; lbl.textContent=rowLabel;
+  wrap.appendChild(lbl);
+  const rowDiv=document.createElement('div');
+  rowDiv.className='jackRow';
+  let pos=1;
+  sec[rowKey].forEach(group=>{
+    const g=document.createElement('div');
+    g.className='group';
+    const confirmed = group.confirmed!==false && group.cat!=='unconfirmed';
+    g.innerHTML = `<div class="groupHead">${group.label}${confirmed?'':' <span class="unconfTag">· sin confirmar</span>'}</div>`;
+    const jr=document.createElement('div'); jr.className='jacks';
+    group.items.forEach(item=>{
+      const p=pos++;
+      const jackConfirmed = group.confirmed!==false;
+      const data={section:sec.id, sectionTitle:sec.title, row:rowKey, pos:p, item, group:group.label, cat:group.cat, confirmed:jackConfirmed};
+      JACKS[key(sec.id,rowKey,p)] = data;
+      const b=document.createElement('button');
+      b.className='jack'+(group.cat==='unconfirmed'||!jackConfirmed?' unconfirmed':'');
+      b.style.setProperty('--cat', `var(${CATS[group.cat].v})`);
+      b.dataset.section=sec.id; b.dataset.row=rowKey; b.dataset.pos=p;
+      b.title = `Sección ${sec.title} · ${rowLabel} ${p} — ${group.label} ${item}` + (jackConfirmed?'':' (sin confirmar)');
+      b.innerHTML = `<span class="pos">${p}</span><span class="item">${item}</span><span class="dots"></span>`;
+      jr.appendChild(b);
+    });
+    g.appendChild(jr);
+    rowDiv.appendChild(g);
+  });
+  wrap.appendChild(rowDiv);
+  return wrap;
+}
+
+// ---- Legend ----
+function renderLegend(){
+  const host=document.getElementById('legend');
+  host.innerHTML = Object.entries(CATS).map(([k,c])=>
+    `<span><i class="${k==='unconfirmed'?'unconf':''}" style="${k==='unconfirmed'?'':`background:var(${c.v})`}"></i>${c.label}</span>`
+  ).join('');
+}
+
+// ---- State ----
+let mode='sandbox';
+let pending=null;
+let sandboxCables = loadSandbox();
+let exerciseCables = [];
+let currentExercise = null;
+const WIRE_COLORS = ['#c4542f','#3f7cc4','#3f9d5f','#8a5fc4','#c49a2f','#c4473f','#2f9ea0','#9e7a2f'];
+let wireIdx = 0;
+
+function loadSandbox(){
+  try{ const raw = localStorage.getItem('patchbay_sandbox_v1'); return raw? JSON.parse(raw): []; }catch(e){ return []; }
+}
+function saveSandbox(){
+  try{ localStorage.setItem('patchbay_sandbox_v1', JSON.stringify(sandboxCables)); }catch(e){}
+}
+
+function cables(){ return mode==='sandbox' ? sandboxCables : exerciseCables; }
+
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t=setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+function sameJack(a,b){ return a.section===b.section && a.row===b.row && a.pos===b.pos; }
+
+function jackEl(j){
+  return document.querySelector(`.jack[data-section="${j.section}"][data-row="${j.row}"][data-pos="${j.pos}"]`);
+}
+
+function describeJack(j){
+  const d=JACKS[key(j.section,j.row,j.pos)];
+  return `Sec ${d.section} · ${d.row.toUpperCase()} ${d.pos} — ${d.group} ${d.item}`;
+}
+
+function onJackClick(e){
+  const b=e.currentTarget;
+  const j={section:b.dataset.section, row:b.dataset.row, pos:Number(b.dataset.pos)};
+  if(!pending){
+    pending=j; b.classList.add('pending');
+    return;
+  }
+  if(sameJack(pending,j)){
+    jackEl(pending).classList.remove('pending'); pending=null; return;
+  }
+  if(pending.row===j.row){
+    jackEl(pending).classList.remove('pending');
+    pending=j; b.classList.add('pending');
+    return;
+  }
+  // opposite rows -> try to connect
+  const supJack = pending.row==='sup'? pending : j;
+  const infJack = pending.row==='inf'? pending : j;
+  const occupied = cables().some(c => sameJack(c.inf, infJack));
+  if(occupied){
+    toast('Ese destino ya tiene un cable. Quítalo primero.');
+    jackEl(pending).classList.remove('pending'); pending=null;
+    return;
+  }
+  const color = WIRE_COLORS[wireIdx++ % WIRE_COLORS.length];
+  cables().push({id:Date.now()+'-'+Math.random().toString(36).slice(2), sup:supJack, inf:infJack, color});
+  jackEl(pending).classList.remove('pending'); pending=null;
+  if(mode==='sandbox') saveSandbox();
+  renderAll();
+}
+
+function removeCable(id){
+  const arr = cables();
+  const idx = arr.findIndex(c=>c.id===id);
+  if(idx>-1) arr.splice(idx,1);
+  if(mode==='sandbox') saveSandbox();
+  renderAll();
+}
+
+function renderDots(){
+  document.querySelectorAll('.jack').forEach(el=>{
+    const dotsHost = el.querySelector('.dots');
+    dotsHost.innerHTML='';
+  });
+  cables().forEach(c=>{
+    [c.sup, c.inf].forEach(j=>{
+      const el = jackEl(j);
+      if(!el) return;
+      const dotsHost = el.querySelector('.dots');
+      if(dotsHost.children.length<4){
+        const i=document.createElement('i');
+        i.style.background=c.color;
+        dotsHost.appendChild(i);
+      }
+    });
+  });
+}
+
+function renderCableList(){
+  const listEl = mode==='sandbox' ? document.getElementById('sandboxList') : document.getElementById('exCableList');
+  const arr = cables();
+  if(arr.length===0){
+    listEl.innerHTML = '<li class="empty" style="border:none;background:none;padding:2px 0">Sin cables todavía.</li>';
+    return;
+  }
+  listEl.innerHTML = arr.map(c=>`
+    <li style="--wire:${c.color}">
+      <span class="desc">${describeJack(c.sup)} <br>→ ${describeJack(c.inf)}</span>
+      <button data-id="${c.id}" title="Quitar cable">✕</button>
+    </li>
+  `).join('');
+  listEl.querySelectorAll('button[data-id]').forEach(btn=>{
+    btn.addEventListener('click', ()=> removeCable(btn.dataset.id));
+  });
+}
+
+function renderAll(){
+  renderDots();
+  renderCableList();
+  if(mode==='exercise' && currentExercise) renderChecklist(false);
+}
+
+// ---- Mode switching ----
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    mode = tab.dataset.mode;
+    if(pending){ jackEl(pending)?.classList.remove('pending'); pending=null; }
+    document.getElementById('sandboxCard').hidden = mode!=='sandbox';
+    if(mode==='exercise'){
+      if(currentExercise){
+        document.getElementById('exerciseWorkCard').hidden=false;
+        document.getElementById('exerciseListCard').hidden=true;
+      } else {
+        document.getElementById('exerciseListCard').hidden=false;
+        document.getElementById('exerciseWorkCard').hidden=true;
+      }
+    } else {
+      document.getElementById('exerciseListCard').hidden=true;
+      document.getElementById('exerciseWorkCard').hidden=true;
+    }
+    renderAll();
+  });
+});
+
+document.getElementById('clearBtn').addEventListener('click', ()=>{
+  if(mode==='sandbox'){ sandboxCables.length=0; saveSandbox(); }
+  else { exerciseCables.length=0; }
+  if(pending){ jackEl(pending)?.classList.remove('pending'); pending=null; }
+  renderAll();
+});
+
+// ---- Exercises ----
+const EXERCISES = [
+  {id:'ex1', title:'Compresión insertada (SSL G Comp)',
+   desc:'Patchea el insert del canal 5 a través del SSL G Comp: el envío del canal hacia la entrada del compresor, y la salida del compresor de vuelta al retorno del canal.',
+   req:[
+     {a:{section:'03',row:'sup',pos:5}, b:{section:'05',row:'inf',pos:41}, label:'Channel Insert Send (A) 5 → SSL G Comp In L'},
+     {a:{section:'05',row:'sup',pos:41}, b:{section:'03',row:'inf',pos:5}, label:'SSL G Comp Out L → Channel Insert Return (A) 5'},
+   ]},
+  {id:'ex2', title:'Reverb con el Lexicon',
+   desc:'Envía el Aux 1 al Lexicon PCM96 y trae su retorno al insert del canal 10 para monitorearlo sumado en ese canal.',
+   req:[
+     {a:{section:'02',row:'sup',pos:17}, b:{section:'05',row:'inf',pos:25}, label:'Aux Out 1 → Lexicon PCM96 In L'},
+     {a:{section:'05',row:'sup',pos:25}, b:{section:'03',row:'inf',pos:10}, label:'Lexicon PCM96 Out L → Channel Insert Return (A) 10'},
+   ]},
+  {id:'ex3', title:'Monitoreo de un canal del DAW',
+   desc:'Rutea la salida del canal 3 del DAW hacia el Tape Monitor 3 para poder escucharlo por el monitor path.',
+   req:[
+     {a:{section:'04',row:'sup',pos:3}, b:{section:'05',row:'inf',pos:3}, label:'DAW Send 3 → Tape Monitor Send 3'},
+   ]},
+  {id:'ex4', title:'Preamp externo (API 512)',
+   desc:'Usa el preamp API 512 en vez del preamp interno para el micrófono 3: manda la línea de micrófono 3 a la entrada del API 512, y su salida de vuelta a la entrada de preamp del canal 3. (Simplificación pedagógica: en la consola real convendría usar una entrada de línea).',
+   req:[
+     {a:{section:'01',row:'sup',pos:3}, b:{section:'05',row:'inf',pos:33}, label:'Studio Mic Line 3 → API 512 In 1'},
+     {a:{section:'05',row:'sup',pos:33}, b:{section:'01',row:'inf',pos:3}, label:'API 512 Out 1 → Microphone Preamp Input 3'},
+   ]},
+  {id:'ex5', title:'Exportar un stem al Avid',
+   desc:'Manda el envío del canal 8 del DAW directamente a la entrada 8 del Avid 16x16 para exportar ese canal como stem.',
+   req:[
+     {a:{section:'04',row:'sup',pos:8}, b:{section:'04',row:'inf',pos:8}, label:'DAW Send 8 → Avid 16x16 Input 08'},
+   ]},
+  {id:'ex6', title:'Mic a otra sala (Tie Line)',
+   desc:'Lleva el micrófono 10 del Estudio A hacia la sala B usando la tie line 10.',
+   req:[
+     {a:{section:'01',row:'sup',pos:10}, b:{section:'06',row:'inf',pos:2}, label:'Studio Mic Line 10 → Tie Line Panel 10'},
+   ]},
+];
+
+function renderExList(){
+  const host=document.getElementById('exList');
+  host.innerHTML = EXERCISES.map(ex=>`<div class="exCard" data-id="${ex.id}"><h4>${ex.title}</h4><p>${ex.desc}</p></div>`).join('');
+  host.querySelectorAll('.exCard').forEach(card=>{
+    card.addEventListener('click', ()=> openExercise(card.dataset.id));
+  });
+}
+
+function openExercise(id){
+  currentExercise = EXERCISES.find(e=>e.id===id);
+  exerciseCables = [];
+  if(pending){ jackEl(pending)?.classList.remove('pending'); pending=null; }
+  document.getElementById('exerciseListCard').hidden=true;
+  document.getElementById('exerciseWorkCard').hidden=false;
+  document.getElementById('exTitle').textContent = currentExercise.title;
+  document.getElementById('exDesc').textContent = currentExercise.desc;
+  renderAll();
+  renderChecklist(false);
+}
+
+function pairEquals(req, c){
+  const rm = (x,y)=> x.section===y.section && x.row===y.row && x.pos===y.pos;
+  return rm(req.a,c.sup) && rm(req.b,c.inf);
+}
+
+function renderChecklist(evaluate){
+  const ul = document.getElementById('exChecklist');
+  const rows = currentExercise.req.map(req=>{
+    const met = exerciseCables.some(c=> pairEquals(req,c));
+    return {req, met};
+  });
+  ul.innerHTML = rows.map(r=>`<li class="${evaluate ? (r.met?'met':'unmet') : ''}"><span class="mark">${evaluate ? (r.met?'✓':'✗') : '•'}</span><span>${r.label? '' : ''}${r.req.label}</span></li>`).join('');
+  if(evaluate){
+    const allMet = rows.every(r=>r.met);
+    const extra = exerciseCables.length - rows.filter(r=>r.met).length;
+    if(allMet){
+      toast(extra>0 ? `¡Correcto! (hay ${extra} cable(s) extra sin relación con el ejercicio)` : '¡Ejercicio resuelto correctamente!');
+    } else {
+      toast('Todavía falta alguna conexión. Revisa la lista.');
+    }
+  }
+}
+
+document.getElementById('verifyBtn').addEventListener('click', ()=> renderChecklist(true));
+document.getElementById('hintBtn').addEventListener('click', ()=>{
+  const unmet = currentExercise.req.find(req => !exerciseCables.some(c=>pairEquals(req,c)));
+  if(!unmet){ toast('Ya tienes todas las conexiones requeridas.'); return; }
+  toast('Pista: '+unmet.label);
+});
+document.getElementById('resetExBtn').addEventListener('click', ()=>{
+  exerciseCables = [];
+  renderAll(); renderChecklist(false);
+});
+document.getElementById('backToListBtn').addEventListener('click', ()=>{
+  currentExercise=null;
+  document.getElementById('exerciseWorkCard').hidden=true;
+  document.getElementById('exerciseListCard').hidden=false;
+});
+
+// ---- Init ----
+renderLegend();
+buildAndRenderSections();
+renderExList();
+document.querySelectorAll('.jack').forEach(b=> b.addEventListener('click', onJackClick));
+renderAll();
+</script>
+</body>
+</html>
