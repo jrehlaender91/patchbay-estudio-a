@@ -495,56 +495,67 @@ function removeCable(id){
 }
 
 // ---- Cable SVG overlay ----
+// Elements persist per cable id and just get their attributes updated every
+// animation frame, so cables stay pinned to their jacks even during inertial
+// (momentum) scrolling on phones, where 'scroll' events can arrive late.
+const cableEls = new Map(); // cable id -> {g, hit, vis, capA, capB}
+
 function redrawCables(){
   const svg = document.getElementById('cableSvg');
   const docW = document.documentElement.scrollWidth;
   const docH = document.documentElement.scrollHeight;
   svg.setAttribute('width', docW);
   svg.setAttribute('height', docH);
-  while(svg.firstChild) svg.removeChild(svg.firstChild);
 
   const arr = cables();
+  const liveIds = new Set(arr.map(c=>c.id));
+  for(const [id, els] of cableEls){
+    if(!liveIds.has(id)){ els.g.remove(); cableEls.delete(id); }
+  }
+
   arr.forEach(c=>{
     const elA = jackEl(c.sup), elB = jackEl(c.inf);
-    if(!elA || !elB) return;
+    let els = cableEls.get(c.id);
+    if(!elA || !elB){ if(els){ els.g.remove(); cableEls.delete(c.id); } return; }
     const ra = holeRect(elA), rb = holeRect(elB);
-    if(ra.width===0 || rb.width===0) return; // endpoint inside a collapsed section
+    if(ra.width===0 || rb.width===0){ if(els) els.g.style.display='none'; return; } // endpoint inside a collapsed section
+
     const x1 = ra.left + ra.width/2;
     const y1 = ra.bottom + window.scrollY - 1; // sup jacks exit from the bottom of the hole
     const x2 = rb.left + rb.width/2;
     const y2 = rb.top + window.scrollY + 1; // inf jacks are fed from the top of the hole
     const ctrl = Math.max(30, Math.min(260, Math.abs(y2-y1)/2 + 20));
     const d = `M ${x1} ${y1} C ${x1} ${y1+ctrl}, ${x2} ${y2-ctrl}, ${x2} ${y2}`;
-
     const isActive = hoverJackKey && (key(c.sup.section,c.sup.row,c.sup.pos)===hoverJackKey || key(c.inf.section,c.inf.row,c.inf.pos)===hoverJackKey);
-    const g = document.createElementNS(SVG_NS,'g');
-    g.setAttribute('class','cableG'+(isActive?' active':'')+(hoverJackKey && !isActive?' dim':''));
 
-    const hit = document.createElementNS(SVG_NS,'path');
-    hit.setAttribute('d', d); hit.setAttribute('class','hit'); hit.setAttribute('stroke','transparent'); hit.setAttribute('stroke-width','16'); hit.setAttribute('fill','none');
-    hit.addEventListener('click', ()=> removeCable(c.id));
-
-    const vis = document.createElementNS(SVG_NS,'path');
-    vis.setAttribute('d', d); vis.setAttribute('stroke', c.color); vis.setAttribute('class','vis'); vis.setAttribute('fill','none');
-
-    const capA = document.createElementNS(SVG_NS,'circle');
-    capA.setAttribute('cx',x1); capA.setAttribute('cy',y1); capA.setAttribute('r',4.5); capA.setAttribute('fill',c.color); capA.setAttribute('stroke','var(--panel)'); capA.setAttribute('stroke-width','1.5');
-    const capB = document.createElementNS(SVG_NS,'circle');
-    capB.setAttribute('cx',x2); capB.setAttribute('cy',y2); capB.setAttribute('r',4.5); capB.setAttribute('fill',c.color); capB.setAttribute('stroke','var(--panel)'); capB.setAttribute('stroke-width','1.5');
-
-    g.appendChild(hit); g.appendChild(vis); g.appendChild(capA); g.appendChild(capB);
-    svg.appendChild(g);
+    if(!els){
+      const g = document.createElementNS(SVG_NS,'g');
+      const hit = document.createElementNS(SVG_NS,'path');
+      hit.setAttribute('class','hit'); hit.setAttribute('stroke','transparent'); hit.setAttribute('stroke-width','16'); hit.setAttribute('fill','none');
+      hit.addEventListener('click', ()=> removeCable(c.id));
+      const vis = document.createElementNS(SVG_NS,'path');
+      vis.setAttribute('class','vis'); vis.setAttribute('fill','none');
+      const capA = document.createElementNS(SVG_NS,'circle');
+      capA.setAttribute('r',4.5); capA.setAttribute('stroke','var(--panel)'); capA.setAttribute('stroke-width','1.5');
+      const capB = document.createElementNS(SVG_NS,'circle');
+      capB.setAttribute('r',4.5); capB.setAttribute('stroke','var(--panel)'); capB.setAttribute('stroke-width','1.5');
+      g.appendChild(hit); g.appendChild(vis); g.appendChild(capA); g.appendChild(capB);
+      svg.appendChild(g);
+      els = {g,hit,vis,capA,capB};
+      cableEls.set(c.id, els);
+    }
+    els.g.style.display='';
+    els.g.setAttribute('class','cableG'+(isActive?' active':'')+(hoverJackKey && !isActive?' dim':''));
+    els.hit.setAttribute('d', d);
+    els.vis.setAttribute('d', d); els.vis.setAttribute('stroke', c.color);
+    els.capA.setAttribute('cx', x1); els.capA.setAttribute('cy', y1); els.capA.setAttribute('fill', c.color);
+    els.capB.setAttribute('cx', x2); els.capB.setAttribute('cy', y2); els.capB.setAttribute('fill', c.color);
   });
 }
 
-let rafPending=false;
-function scheduleRedraw(){
-  if(rafPending) return;
-  rafPending=true;
-  requestAnimationFrame(()=>{ rafPending=false; redrawCables(); });
-}
-window.addEventListener('resize', scheduleRedraw);
-window.addEventListener('scroll', scheduleRedraw, true); // capture: catches inner .rowScroll scrolling too
+function scheduleRedraw(){ redrawCables(); }
+
+(function tick(){ redrawCables(); requestAnimationFrame(tick); })();
 
 function renderCableList(){
   const listEl = mode==='sandbox' ? document.getElementById('sandboxList') : document.getElementById('exCableList');
