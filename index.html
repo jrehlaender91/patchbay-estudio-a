@@ -87,7 +87,10 @@ details.patch[open] > summary::after{transform:rotate(90deg)}
 @media(prefers-reduced-motion:reduce){.cableLayer .vis,.cableLayer .shadow,.cableLayer .core{transition:none}}
 
 .panels{display:grid;grid-template-columns:1fr;gap:16px}
-#sections{order:2;overflow-x:auto;position:relative}
+#sections{order:2;overflow-x:auto;position:relative;scroll-snap-type:x mandatory}
+#sections.noSnap{scroll-snap-type:none}
+.pageMark{position:absolute;top:0;width:0;scroll-snap-align:start;scroll-snap-stop:always;pointer-events:none}
+.pageMark.divider{border-left:2px dashed var(--line)}
 .sidebar{order:1;display:flex;flex-direction:column;gap:12px}
 @media(max-width:640px){
   .secGrid{grid-template-columns:34px repeat(48, 40px);grid-template-rows:auto 56px auto 56px}
@@ -141,6 +144,7 @@ details.patch[open] > summary::after{transform:rotate(90deg)}
         <button class="tab" data-mode="exercise">Ejercicios</button>
       </div>
       <button class="ghost-btn" id="expandAllBtn">Expandir todo</button>
+      <button class="ghost-btn" id="snapToggleBtn">Ver todo el ancho</button>
       <button class="ghost-btn" id="clearBtn">Limpiar cables</button>
     </div>
   </div>
@@ -155,7 +159,7 @@ details.patch[open] > summary::after{transform:rotate(90deg)}
         <stop offset="55%" stop-color="#9a9ca3"/>
         <stop offset="100%" stop-color="#53555c"/>
       </radialGradient>
-    </defs></svg></div>
+    </defs></svg><div id="pageMark1" class="pageMark" style="left:0"></div><div id="pageMark2" class="pageMark divider"></div></div>
     <aside class="sidebar">
       <div class="card" id="sandboxCard">
         <h3>Cables activos (sandbox)</h3>
@@ -578,8 +582,30 @@ function redrawCables(){
   for(const [id, els] of cableEls){ if(!liveIds.has(id)){ els.g.remove(); cableEls.delete(id); } }
 }
 
-function scheduleRedraw(){ redrawCables(); }
+// ---- Page divider / snap (visual split matching the real patchbay's gap after position 24) ----
+function layoutPageMarks(){
+  const sectionsEl = document.getElementById('sections');
+  const h = sectionsEl.scrollHeight + 'px';
+  const m1 = document.getElementById('pageMark1');
+  const m2 = document.getElementById('pageMark2');
+  m1.style.height = h;
+  m2.style.height = h;
+  const ref = jackEl({section:'01', row:'sup', pos:25});
+  if(!ref) return;
+  const a = contentAnchor(ref);
+  if(!a) return;
+  m2.style.left = Math.max(0, a.x - a.rad - 10) + 'px';
+}
+
+function scheduleRedraw(){ redrawCables(); layoutPageMarks(); }
 window.addEventListener('resize', scheduleRedraw);
+
+let snapOn = true;
+document.getElementById('snapToggleBtn').addEventListener('click', ()=>{
+  snapOn = !snapOn;
+  document.getElementById('sections').classList.toggle('noSnap', !snapOn);
+  document.getElementById('snapToggleBtn').textContent = snapOn ? 'Ver todo el ancho' : 'Volver a páginas';
+});
 
 function renderCableList(){
   const listEl = mode==='sandbox' ? document.getElementById('sandboxList') : document.getElementById('exCableList');
